@@ -87,6 +87,13 @@ resource "aws_ecs_cluster" "main" {
   name = local.name
 }
 
+# Fargate Spot is about 70% cheaper. A reclaimed task is simply restarted by the service (new public
+# IP, and the in-task database is lost, which is already the case for any restart).
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name       = aws_ecs_cluster.main.name
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+}
+
 # ---------------- Task: web + api + worker + postgres + redis ----------------
 resource "random_password" "db" {
   length  = 24
@@ -104,6 +111,11 @@ locals {
     { name = "DEVPILOT_CLAUDE_MODEL", value = var.claude_model },
     { name = "DEVPILOT_ANTHROPIC_API_KEY", value = var.anthropic_api_key },
     { name = "DEVPILOT_GITHUB_TOKEN", value = var.github_token },
+    { name = "DEVPILOT_GITHUB_OAUTH_CLIENT_ID", value = var.github_oauth_client_id },
+    { name = "DEVPILOT_GITHUB_OAUTH_CLIENT_SECRET", value = var.github_oauth_client_secret },
+    { name = "DEVPILOT_SESSION_SECRET", value = var.session_secret },
+    { name = "DEVPILOT_ALLOWED_GITHUB_USERS", value = var.allowed_github_users },
+    { name = "DEVPILOT_PUBLIC_BASE_URL", value = var.public_base_url },
   ]
 
   log = { for c in ["web", "api", "worker", "postgres", "redis"] : c => {
@@ -120,8 +132,8 @@ resource "aws_ecs_task_definition" "app" {
   family                   = local.name
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 1024
-  memory                   = 2048
+  cpu                      = var.task_cpu
+  memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.execution.arn
 
   container_definitions = jsonencode([
@@ -189,7 +201,12 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+
+  capacity_provider_strategy {
+    capacity_provider = var.use_spot ? "FARGATE_SPOT" : "FARGATE"
+    weight            = 1
+  }
+  depends_on = [aws_ecs_cluster_capacity_providers.main]
   network_configuration {
     subnets          = data.aws_subnets.default.ids
     security_groups  = [aws_security_group.app.id]

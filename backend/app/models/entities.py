@@ -66,7 +66,12 @@ class PipelineRun(Base):
 class Diagnosis(Base):
     __tablename__ = "diagnoses"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    pipeline_run_id: Mapped[str] = mapped_column(ForeignKey("pipeline_runs.id"))
+    # Null for diagnoses of pasted logs (no GitHub run behind them)
+    pipeline_run_id: Mapped[str | None] = mapped_column(ForeignKey("pipeline_runs.id"),
+                                                        nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="run")  # run | pasted
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    log_excerpt: Mapped[str] = mapped_column(Text, default="")  # redacted failure window, trimmed
     category: Mapped[str] = mapped_column(String(50))
     root_cause: Mapped[str] = mapped_column(Text)
     evidence: Mapped[list] = mapped_column(JSON, default=list)  # log lines that support it

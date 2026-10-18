@@ -32,3 +32,9 @@ def client():
     Base.metadata.drop_all(get_engine())  # clean slate per test
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _no_github_lookup(monkeypatch):
+    """Never hit github.com from unit tests: pretend GitHub is unreachable (connect falls back)."""
+    monkeypatch.setattr("app.api.routes.repositories.lookup_repo", lambda full_name: None)

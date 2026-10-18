@@ -38,6 +38,19 @@ class Settings(BaseSettings):
     github_git_base: str = "https://github.com"
     github_api_base: str = "https://api.github.com"
 
+    # Sign in with GitHub (OAuth 2.0 authorization-code flow). The three secrets below must all be
+    # set to turn authentication on; otherwise the API is open (local development).
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
+    # Signs session cookies; use a long random value (openssl rand -hex 32).
+    session_secret: str = ""
+    # Comma-separated GitHub logins allowed to sign in; empty = any GitHub account.
+    allowed_github_users: str = ""
+    # Public origin, e.g. https://devpilot.example.com; empty = derived from the request headers.
+    public_base_url: str = ""
+    session_ttl_hours: int = 12
+    github_oauth_base: str = "https://github.com"
+
     # Operations
     # Run Alembic on API start. The Helm chart sets this to false and runs a migration Job.
     auto_migrate: bool = True
