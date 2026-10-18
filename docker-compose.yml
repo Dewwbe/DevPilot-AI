@@ -19,7 +19,7 @@ services:
   worker:
     build: ./backend
     env_file: .env
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.workers.celery_app worker --loglevel=info -P threads --concurrency=2
     depends_on: [api]
     deploy: { resources: { limits: { cpus: "1.0", memory: 1g } } }
 
@@ -33,7 +33,7 @@ services:
     build: ./backend
     env_file: .env
     environment: { DEVPILOT_RUNNER_WORKSPACE_VOLUME: devpilot-workspaces }
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1 -Q checks
+    command: celery -A app.workers.celery_app worker --loglevel=info -P threads --concurrency=1 -Q checks
     group_add: ["${DOCKER_GID:-999}"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
