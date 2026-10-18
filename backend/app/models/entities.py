@@ -75,6 +75,7 @@ class Diagnosis(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_version: Mapped[str] = mapped_column(String(40), default="")  # which prompt produced it
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -90,6 +91,8 @@ class ProposedFix(Base):
     )
     decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # set once a pull request has been opened for this fix
+    pr_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class CheckRun(Base):

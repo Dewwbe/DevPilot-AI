@@ -4,11 +4,13 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from app.core import metrics
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.logging import log
 from app.models.entities import (
     Analysis,
+    AuditEvent,
     CheckRun,
     Diagnosis,
     PipelineRun,
@@ -16,8 +18,10 @@ from app.models.entities import (
     Repository,
 )
 from app.services import audit
+from app.services.budget import budget_exhausted
 from app.services.check_runner import run_checks
 from app.services.diagnoser import diagnose
+from app.services.github_app import GitHubAppAuth, build_pr_body, open_fix_pr
 from app.services.github_client import GitHubClient, shallow_clone
 from app.services.repo_analyzer import analyze_repository
 from app.workers.celery_app import celery_app
@@ -65,14 +69,22 @@ def diagnose_run_task(pipeline_run_id: str) -> None:
         return
     latest = (session.query(Analysis).filter_by(repository_id=repo.id, status="completed")
               .order_by(Analysis.created_at.desc()).first())
+    over_budget = budget_exhausted(session, repo.id)
+    if over_budget:
+        metrics.BUDGET_EXCEEDED.inc()
+        audit.record(session, actor="system", action="diagnosis.budget_exceeded",
+                     target=repo.full_name,
+                     detail={"daily_token_budget": get_settings().repo_daily_token_budget})
     result = diagnose(logs, latest.profile if latest else {},
-                      max_chars=get_settings().max_log_chars)
+                      max_chars=get_settings().max_log_chars, use_llm=not over_budget)
+    metrics.record_diagnosis(result.category, result.model, result.input_tokens,
+                             result.output_tokens, result.latency_ms)
 
     diag = Diagnosis(pipeline_run_id=run.id, category=result.category,
                      root_cause=result.root_cause, evidence=result.evidence,
                      confidence=result.confidence, model=result.model,
                      input_tokens=result.input_tokens, output_tokens=result.output_tokens,
-                     latency_ms=result.latency_ms)
+                     latency_ms=result.latency_ms, prompt_version=result.prompt_version)
     session.add(diag)
     session.flush()
     if result.fix_summary:
@@ -81,6 +93,43 @@ def diagnose_run_task(pipeline_run_id: str) -> None:
     audit.record(session, actor="ai", action="diagnosis.created", target=run.id,
                  detail={"category": result.category, "confidence": result.confidence,
                          "warnings": result.warnings})
+    session.commit()
+
+
+@celery_app.task(name="open_fix_pr")
+def open_fix_pr_task(fix_id: str) -> None:
+    """Open a PR (new branch, never the default branch) for an approved fix."""
+    session = next(get_session())
+    fix = session.get(ProposedFix, fix_id)
+    diag = session.get(Diagnosis, fix.diagnosis_id)
+    run = session.get(PipelineRun, diag.pipeline_run_id)
+    repo = session.get(Repository, run.repository_id)
+    s = get_settings()
+    try:
+        auth = GitHubAppAuth(s.github_app_id, s.github_app_private_key,
+                             s.github_app_installation_id)
+        approval = (session.query(AuditEvent)
+                    .filter_by(target=fix.id, action="fix.approved")
+                    .order_by(AuditEvent.created_at.desc()).first())
+        note = (approval.detail or {}).get("comment", "") if approval else ""
+        url = open_fix_pr(
+            repo_full_name=repo.full_name, default_branch=repo.default_branch, fix_id=fix.id,
+            patch=fix.patch, title=f"DevPilot fix: {fix.summary[:80]}",
+            body=build_pr_body(root_cause=diag.root_cause, evidence=diag.evidence,
+                               risk=fix.risk.value, reviewer=fix.decided_by or "unknown",
+                               comment=note, fix_id=fix.id),
+            token=auth.installation_token(),
+            workdir=Path(s.workspace_root) / f"pr-{fix.id}",
+        )
+        fix.pr_url = url
+        audit.record(session, actor="system", action="fix.pr_opened", target=fix.id,
+                     detail={"repository": repo.full_name, "pr_url": url})
+        metrics.PRS_OPENED.labels(result="opened").inc()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("pr_failed", fix_id=fix_id)
+        audit.record(session, actor="system", action="fix.pr_failed", target=fix.id,
+                     detail={"repository": repo.full_name, "error": str(exc)[:300]})
+        metrics.PRS_OPENED.labels(result="failed").inc()
     session.commit()
 
 

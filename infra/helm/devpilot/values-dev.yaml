@@ -1,0 +1,26 @@
+# Development cluster: small, no autoscaling, staging certificates, relaxed budget.
+config:
+  DEVPILOT_ENV: dev
+  DEVPILOT_REPO_DAILY_TOKEN_BUDGET: "50000"
+
+secrets:
+  secretId: devpilot-dev/app
+
+api:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+
+worker:
+  replicas: 1
+
+web:
+  replicas: 1
+
+ingress:
+  host: devpilot-dev.example.com
+  tls:
+    clusterIssuer: letsencrypt-staging  # avoids Let's Encrypt rate limits while iterating
+
+certManager:
+  createClusterIssuers: true

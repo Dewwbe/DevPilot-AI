@@ -13,7 +13,7 @@ spec:
       containers:
         - name: worker
           image: devpilot-api:latest
-          command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
+          command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "-P", "threads"]
           envFrom:
             - configMapRef: { name: devpilot-config }
             - secretRef: { name: devpilot-secrets }

@@ -1,0 +1,96 @@
+# Defaults shared by every environment. Override with values-dev.yaml / values-prod.yaml.
+
+image:
+  registry: ""            # e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com (no trailing slash)
+  pullPolicy: IfNotPresent
+  api: { repository: devpilot-api, tag: latest }
+  web: { repository: devpilot-web, tag: latest }
+
+# Non-secret environment for the api, worker and migration job.
+config:
+  DEVPILOT_ENV: k8s
+  DEVPILOT_CLAUDE_MODEL: claude-sonnet-5-5
+  DEVPILOT_REDIS_URL: ""  # required: managed Redis endpoint, e.g. redis://<host>:6379/0
+  DEVPILOT_AUTO_MIGRATE: "false"  # the pre-upgrade migration Job owns the schema
+  DEVPILOT_REPO_DAILY_TOKEN_BUDGET: "200000"
+
+# Secrets come from AWS Secrets Manager through the Secrets Store CSI driver. Nothing secret is
+# stored in this chart or in git. The CSI "sync as Kubernetes Secret" feature materialises the
+# values for envFrom while a pod that mounts the volume is running.
+secrets:
+  enabled: true
+  providerRegion: us-east-1
+  # One Secrets Manager secret holding a JSON object (created by infra/terraform-eks).
+  secretId: devpilot-dev/app
+  # JSON key in that secret -> environment variable name.
+  envFromJson:
+    database_url: DEVPILOT_DATABASE_URL
+    anthropic_api_key: DEVPILOT_ANTHROPIC_API_KEY
+    github_token: DEVPILOT_GITHUB_TOKEN
+    github_webhook_secret: DEVPILOT_GITHUB_WEBHOOK_SECRET
+  # Optional GitHub App credentials (task 3.9). Add these keys to the secret to enable PR creation.
+  githubApp:
+    enabled: false
+  basicAuthKey: basic_auth_htpasswd  # htpasswd line for the dashboard login (ingress basic auth)
+
+serviceAccount:
+  name: devpilot
+  # IRSA role allowed to read the secret above (terraform-eks output app_role_arn)
+  roleArn: ""
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  pdb: { enabled: true, minAvailable: 1 }
+
+worker:
+  replicas: 1
+  concurrency: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  workspaceSizeLimit: 2Gi
+
+web:
+  replicas: 2
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+migration:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: devpilot.example.com
+  tls:
+    enabled: true
+    secretName: devpilot-tls
+    clusterIssuer: letsencrypt-prod
+  # Dashboard and API sit behind basic auth until real auth lands (roadmap 1.15). The webhook and
+  # health probes stay public (the webhook is authenticated by its HMAC signature).
+  basicAuth: { enabled: true }
+
+certManager:
+  createClusterIssuers: false  # set true once, on the first install into a cluster
+  email: ""                    # Let's Encrypt registration email
+
+monitoring:
+  serviceMonitor: false  # true when the Prometheus Operator CRDs are installed (also ships the
+                         # Grafana dashboard and alert rules)
+  dailySpendAlertUsd: 5  # alert when estimated Claude spend over 24h exceeds this
+
+networkPolicy:
+  enabled: true
+
+# Single-replica Postgres and Redis for local clusters (kind/minikube) only. Never in production.
+devDependencies:
+  enabled: false

@@ -1,0 +1,38 @@
+{{- if .Values.migration.enabled }}
+# Runs `alembic upgrade head` before every install/upgrade so API replicas never race on the schema.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels: {{- include "devpilot.selector" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext: {{- include "devpilot.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "devpilot.image" (dict "root" . "img" .Values.image.api) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          envFrom: {{- include "devpilot.envFrom" . | nindent 12 }}
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
+          securityContext: {{- include "devpilot.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            {{- include "devpilot.secretsMount" . | nindent 12 }}
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        {{- include "devpilot.secretsVolume" . | nindent 8 }}
+{{- end }}

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels: {{- include "devpilot.selector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "devpilot.selector" (dict "root" . "component" "web") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101   # nginx-unprivileged
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: {{ include "devpilot.image" (dict "root" . "img" .Values.image.web) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ name: http, containerPort: 8080 }]
+          # The ingress routes /api straight to the API; this keeps nginx's upstream resolvable.
+          env: [{ name: API_UPSTREAM, value: "{{ .Release.Name }}-api:8000" }]
+          resources: {{- toYaml .Values.web.resources | nindent 12 }}
+          readinessProbe: { httpGet: { path: /, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /, port: http }, periodSeconds: 20 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:  # nginx writes its generated config, pid file and caches here
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
+        - { name: conf, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "devpilot.selector" (dict "root" . "component" "web") | nindent 4 }}
+  ports: [{ name: http, port: 80, targetPort: http }]

@@ -7,6 +7,7 @@ data:
   DEVPILOT_ENV: "k8s"
   DEVPILOT_REDIS_URL: "redis://redis:6379/0"
   DEVPILOT_CLAUDE_MODEL: "claude-sonnet-5-5"
-# Secrets (DEVPILOT_DATABASE_URL, DEVPILOT_ANTHROPIC_API_KEY, DEVPILOT_GITHUB_TOKEN)
-# are created out-of-band:  ./scripts/k8s-secrets.sh  - or via Azure Key Vault / AWS Secrets
-# Manager CSI driver in Phase 3. Never commit them.
+# Secrets (DEVPILOT_DATABASE_URL, DEVPILOT_ANTHROPIC_API_KEY, DEVPILOT_GITHUB_TOKEN) are NOT
+# stored here or created by hand. The Helm chart in infra/helm/devpilot reads them from AWS
+# Secrets Manager through the Secrets Store CSI driver. This kustomize base is a plain-manifest
+# reference only; to use it, provide a `devpilot-secrets` Secret yourself. Never commit secrets.

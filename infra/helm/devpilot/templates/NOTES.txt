@@ -1,0 +1,10 @@
+DevPilot AI {{ .Chart.AppVersion }} installed as "{{ .Release.Name }}".
+
+{{- if .Values.ingress.enabled }}
+URL:      http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+Webhook:  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/api/webhooks/github
+{{- end }}
+
+Check rollout:   kubectl rollout status deploy/{{ .Release.Name }}-api
+Migration logs:  kubectl logs job/{{ .Release.Name }}-migrate   (hook job is removed after success)
+Metrics (in-cluster only):  kubectl port-forward svc/{{ .Release.Name }}-api 8000 ; curl localhost:8000/metrics

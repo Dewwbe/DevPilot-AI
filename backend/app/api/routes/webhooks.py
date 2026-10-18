@@ -6,6 +6,7 @@ import json
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.core import metrics
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.logging import log
@@ -38,6 +39,7 @@ async def github_webhook(
         raise HTTPException(503, "Webhook disabled: DEVPILOT_GITHUB_WEBHOOK_SECRET is not set")
     body = await request.body()
     if not verify_signature(secret, body, x_hub_signature_256):
+        metrics.WEBHOOK_EVENTS.labels(result="bad_signature").inc()
         raise HTTPException(401, "Invalid signature")
 
     if x_github_event == "ping":
@@ -74,5 +76,6 @@ async def github_webhook(
     from app.workers.tasks import diagnose_run_task
 
     diagnose_run_task.delay(pipeline_run.id)
+    metrics.WEBHOOK_EVENTS.labels(result="queued").inc()
     log.info("webhook_diagnose_queued", repo=full_name, run_id=run_id)
     return {"status": "queued", "pipeline_run_id": pipeline_run.id}

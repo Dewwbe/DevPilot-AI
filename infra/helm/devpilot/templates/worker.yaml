@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels: {{- include "devpilot.selector" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "devpilot.selector" (dict "root" . "component" "worker") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext: {{- include "devpilot.podSecurityContext" . | nindent 8 }}
+      terminationGracePeriodSeconds: 120  # let an in-flight diagnosis finish (tasks ack late)
+      containers:
+        - name: worker
+          image: {{ include "devpilot.image" (dict "root" . "img" .Values.image.api) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Threads pool: all tasks run in one process so /metrics (port 9100) sees every task.
+          command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info",
+                    "-P", "threads", "--concurrency={{ .Values.worker.concurrency }}"]
+          ports: [{ name: metrics, containerPort: 9100 }]
+          envFrom: {{- include "devpilot.envFrom" . | nindent 12 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          livenessProbe:
+            exec: { command: ["sh", "-c", "celery -A app.workers.celery_app inspect ping -d celery@$HOSTNAME --timeout 5"] }
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+          securityContext: {{- include "devpilot.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: workspaces, mountPath: /tmp/devpilot-workspaces }
+            {{- include "devpilot.secretsMount" . | nindent 12 }}
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: workspaces, emptyDir: { sizeLimit: {{ .Values.worker.workspaceSizeLimit }} } }
+        {{- include "devpilot.secretsVolume" . | nindent 8 }}
+---
+# Headless Service so Prometheus can discover the worker metrics endpoint.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-worker-metrics
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  clusterIP: None
+  selector: {{- include "devpilot.selector" (dict "root" . "component" "worker") | nindent 4 }}
+  ports: [{ name: metrics, port: 9100, targetPort: metrics }]

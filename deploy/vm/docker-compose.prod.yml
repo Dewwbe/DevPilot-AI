@@ -14,6 +14,10 @@ x-app-env: &app-env
   DEVPILOT_GITHUB_TOKEN: ${DEVPILOT_GITHUB_TOKEN:-}
   DEVPILOT_GITHUB_WEBHOOK_SECRET: ${DEVPILOT_GITHUB_WEBHOOK_SECRET:-}
   DEVPILOT_CLAUDE_MODEL: ${DEVPILOT_CLAUDE_MODEL:-claude-sonnet-5-5}
+  DEVPILOT_REPO_DAILY_TOKEN_BUDGET: ${DEVPILOT_REPO_DAILY_TOKEN_BUDGET:-200000}
+  DEVPILOT_GITHUB_APP_ID: ${DEVPILOT_GITHUB_APP_ID:-}
+  DEVPILOT_GITHUB_APP_INSTALLATION_ID: ${DEVPILOT_GITHUB_APP_INSTALLATION_ID:-}
+  DEVPILOT_GITHUB_APP_PRIVATE_KEY: ${DEVPILOT_GITHUB_APP_PRIVATE_KEY:-}
 
 services:
   postgres:
@@ -43,7 +47,7 @@ services:
   worker:
     image: ${REGISTRY}/devpilot-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.workers.celery_app worker --loglevel=info -P threads --concurrency=2
     environment: *app-env
     depends_on: [api]
     deploy: { resources: { limits: { cpus: "1.0", memory: 1g } } }
@@ -54,7 +58,7 @@ services:
     profiles: ["checks"]
     image: ${REGISTRY}/devpilot-api:${IMAGE_TAG:-latest}
     restart: unless-stopped
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1 -Q checks
+    command: celery -A app.workers.celery_app worker --loglevel=info -P threads --concurrency=1 -Q checks
     environment:
       <<: *app-env
       DEVPILOT_RUNNER_IMAGE: ${REGISTRY}/devpilot-runner:${IMAGE_TAG:-latest}
