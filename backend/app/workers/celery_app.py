@@ -11,4 +11,6 @@ celery_app.conf.update(
     task_soft_time_limit=540,
     worker_prefetch_multiplier=1,
     task_always_eager=s.env == "test",
+    # Sandbox checks need the docker socket, so they run on a dedicated, isolated worker.
+    task_routes={"run_checks": {"queue": "checks"}},
 )

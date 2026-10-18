@@ -48,3 +48,35 @@ class DecisionIn(BaseModel):
     decision: ApprovalStatus
     reviewer: str
     comment: str = ""
+
+
+class CheckRunOut(BaseModel):
+    id: str
+    status: str
+    results: list
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class FixOut(BaseModel):
+    id: str
+    summary: str
+    patch: str
+    risk: RiskLevel
+    status: ApprovalStatus
+    decided_by: str | None = None
+    model_config = {"from_attributes": True}
+
+
+class StoredDiagnosisOut(BaseModel):
+    """A persisted diagnosis (from the webhook or a queued run) with its proposed fix."""
+    id: str
+    repository: str
+    provider_run_id: str
+    category: str
+    root_cause: str
+    evidence: list[str]
+    confidence: float
+    model: str
+    created_at: datetime
+    fix: FixOut | None = None

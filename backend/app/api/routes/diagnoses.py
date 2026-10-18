@@ -5,8 +5,22 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.models.entities import ApprovalStatus, AuditEvent, ProposedFix, RiskLevel
-from app.schemas.api import DecisionIn, DiagnoseLogRequest, DiagnosisOut
+from app.models.entities import (
+    ApprovalStatus,
+    AuditEvent,
+    Diagnosis,
+    PipelineRun,
+    ProposedFix,
+    Repository,
+    RiskLevel,
+)
+from app.schemas.api import (
+    DecisionIn,
+    DiagnoseLogRequest,
+    DiagnosisOut,
+    FixOut,
+    StoredDiagnosisOut,
+)
 from app.services import audit
 from app.services.diagnoser import diagnose
 
@@ -40,6 +54,24 @@ def decide_fix(fix_id: str, body: DecisionIn, session: Session = Depends(get_ses
                  target=fix_id, detail={"risk": fix.risk.value, "comment": body.comment})
     session.commit()
     return {"id": fix.id, "status": fix.status.value}
+
+
+@router.get("/diagnoses", response_model=list[StoredDiagnosisOut])
+def list_diagnoses(limit: int = 50, session: Session = Depends(get_session)):
+    """Persisted diagnoses (webhook-triggered or queued), newest first, with their fix."""
+    rows = (session.query(Diagnosis, PipelineRun, Repository)
+            .join(PipelineRun, Diagnosis.pipeline_run_id == PipelineRun.id)
+            .join(Repository, PipelineRun.repository_id == Repository.id)
+            .order_by(Diagnosis.created_at.desc()).limit(min(limit, 200)).all())
+    out = []
+    for diag, run, repo in rows:
+        fix = session.query(ProposedFix).filter_by(diagnosis_id=diag.id).first()
+        out.append(StoredDiagnosisOut(
+            id=diag.id, repository=repo.full_name, provider_run_id=run.provider_run_id,
+            category=diag.category, root_cause=diag.root_cause, evidence=diag.evidence,
+            confidence=diag.confidence, model=diag.model, created_at=diag.created_at,
+            fix=FixOut.model_validate(fix) if fix else None))
+    return out
 
 
 @router.get("/audit")

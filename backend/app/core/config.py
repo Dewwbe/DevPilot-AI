@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # GitHub
     github_token: str = ""
+    github_webhook_secret: str = ""  # HMAC secret for /api/webhooks/github; empty = disabled
 
     # Claude
     anthropic_api_key: str = ""
@@ -24,6 +25,14 @@ class Settings(BaseSettings):
     # Safety
     workspace_root: str = "/tmp/devpilot-workspaces"
     max_log_chars: int = 40_000  # log tail sent to the LLM
+
+    # Check runner (throwaway containers for ruff/pytest/eslint/pip-audit on cloned repos)
+    runner_image: str = "devpilot-runner:latest"
+    runner_workspace_volume: str = "devpilot-workspaces"  # docker volume shared with the worker
+    runner_timeout_s: int = 600
+    runner_memory: str = "1g"
+    runner_cpus: float = 1.0
+    runner_network: str = "bridge"  # checks install dependencies; use "none" for offline-only
 
 
 @lru_cache

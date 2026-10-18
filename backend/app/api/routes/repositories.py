@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_session
-from app.models.entities import Analysis, PipelineRun, Repository
-from app.schemas.api import AnalysisOut, RepositoryCreate, RepositoryOut
+from app.models.entities import Analysis, CheckRun, PipelineRun, Repository
+from app.schemas.api import AnalysisOut, CheckRunOut, RepositoryCreate, RepositoryOut
 from app.services import audit
 
 router = APIRouter(prefix="/api/repositories", tags=["repositories"])
@@ -56,3 +56,23 @@ def diagnose_run(repo_id: str, provider_run_id: str, session: Session = Depends(
     session.commit()
     diagnose_run_task.delay(run.id)
     return {"pipeline_run_id": run.id, "status": "queued"}
+
+
+@router.post("/{repo_id}/checks", response_model=CheckRunOut, status_code=202)
+def start_checks(repo_id: str, session: Session = Depends(get_session)):
+    """Queue ruff/pytest/eslint/pip-audit in throwaway containers on a fresh clone."""
+    from app.workers.tasks import run_checks_task
+
+    if not session.get(Repository, repo_id):
+        raise HTTPException(404, "Repository not found")
+    check = CheckRun(repository_id=repo_id)
+    session.add(check)
+    session.commit()
+    run_checks_task.delay(check.id)
+    return check
+
+
+@router.get("/{repo_id}/checks", response_model=list[CheckRunOut])
+def list_checks(repo_id: str, session: Session = Depends(get_session)):
+    return (session.query(CheckRun).filter_by(repository_id=repo_id)
+            .order_by(CheckRun.created_at.desc()).limit(20).all())

@@ -23,6 +23,32 @@ services:
     depends_on: [api]
     deploy: { resources: { limits: { cpus: "1.0", memory: 1g } } }
 
+  # Runs sandboxed checks (ruff/pytest/eslint/pip-audit) in throwaway containers.
+  # It holds the Docker socket (root-equivalent), so it is kept apart from the main worker and
+  # only consumes the "checks" queue. Opt in:  docker compose --profile checks up -d check-worker
+  # Linux: set DOCKER_GID to the docker group id (stat -c %g /var/run/docker.sock).
+  # Docker Desktop (Windows/macOS): the socket is root-owned; use `user: root` in an override file.
+  check-worker:
+    profiles: ["checks"]
+    build: ./backend
+    env_file: .env
+    environment: { DEVPILOT_RUNNER_WORKSPACE_VOLUME: devpilot-workspaces }
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1 -Q checks
+    group_add: ["${DOCKER_GID:-999}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/tmp/devpilot-workspaces
+    depends_on: { api: { condition: service_started }, runner: { condition: service_completed_successfully } }
+    deploy: { resources: { limits: { cpus: "0.5", memory: 512m } } }
+
+  # Build-only: provides the devpilot-runner:latest image used by check-worker.
+  runner:
+    profiles: ["checks"]
+    build: ./backend/runner
+    image: devpilot-runner:latest
+    entrypoint: ["true"]
+    restart: "no"
+
   web:
     build: ./frontend
     ports: ["8080:8080"]
@@ -30,3 +56,5 @@ services:
 
 volumes:
   pgdata:
+  workspaces:
+    name: devpilot-workspaces

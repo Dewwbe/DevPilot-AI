@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 devpilot
 COPY --from=build /install /usr/local
+# Workspace volume mount point; owned by the app user so a named volume inherits the ownership.
+RUN mkdir -p /tmp/devpilot-workspaces && chown devpilot /tmp/devpilot-workspaces
 WORKDIR /app
 COPY app ./app
 USER devpilot

@@ -16,7 +16,7 @@ data "aws_subnets" "default" {
 
 # ---------------- ECR ----------------
 resource "aws_ecr_repository" "repo" {
-  for_each             = toset(["api", "web"])
+  for_each             = toset(["api", "web", "runner"])
   name                 = "devpilot-${each.key}"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
@@ -29,8 +29,8 @@ resource "aws_ecr_lifecycle_policy" "repo" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 10 images"
-      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 10 }
+      description  = "Keep last 30 images (enough history for rollbacks)"
+      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 30 }
       action       = { type = "expire" }
     }]
   })
@@ -126,10 +126,10 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name             = "postgres"
-      image            = "postgres:16-alpine"
-      essential        = true
-      environment      = [
+      name      = "postgres"
+      image     = "postgres:16-alpine"
+      essential = true
+      environment = [
         { name = "POSTGRES_USER", value = "devpilot" },
         { name = "POSTGRES_PASSWORD", value = random_password.db.result },
         { name = "POSTGRES_DB", value = "devpilot" },

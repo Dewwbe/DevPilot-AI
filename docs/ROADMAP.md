@@ -60,14 +60,14 @@ root cause, verified evidence, proposed patch, risk badge → approve → event 
 |---|---|---|
 | 2.1 | Multi-stage, non-root Dockerfiles; Compose stack with healthchecks and limits | ✅ |
 | 2.2 | GitHub Actions: ruff, pytest + coverage, pip-audit, frontend type-check/build, image build | ✅ |
-| 2.3 | Trivy image scan and kubeconform manifest validation in CI | ✅ (tighten: fail on CRITICAL) |
-| 2.4 | **Check runner**: worker launches a throwaway container to run ruff/pytest/eslint/pip-audit on a cloned repo; stores results | ⬜ |
-| 2.5 | **Webhook**: `POST /api/webhooks/github` (signature-verified) on `workflow_run` = failure → auto-diagnose | ⬜ |
-| 2.6 | Publish images to GHCR (or ACR/ECR) on merge to `main`; tag with git SHA | ⬜ |
-| 2.7 | Bash/Python dev tooling: `dev.sh` ✅; add `db-backup.sh`, `seed-demo.sh`, `rotate-logs` via logrotate | ⬜ |
-| 2.8 | Linux VM deployment: `vm-bootstrap.sh` ✅ → Caddy/Nginx TLS, systemd unit for compose, ufw, non-root deploy user, SSH keys only | ⬜ |
-| 2.9 | CD job: on tag, SSH to VM → pull images → `docker compose up -d` → smoke test `/readyz` | ⬜ |
-| 2.10 | Runbook: "VM is down", "worker stuck", "Claude API errors" | ⬜ |
+| 2.3 | Trivy image scan and kubeconform manifest validation in CI | ✅ fails on fixable CRITICAL (api, web) |
+| 2.4 | **Check runner**: worker launches a throwaway container to run ruff/pytest/eslint/pip-audit on a cloned repo; stores results | ✅ opt-in `checks` profile; API only, no UI yet |
+| 2.5 | **Webhook**: `POST /api/webhooks/github` (signature-verified) on `workflow_run` = failure → auto-diagnose | ✅ plus `GET /api/diagnoses` and a Diagnoses page |
+| 2.6 | Publish images to GHCR (or ACR/ECR) on merge to `main`; tag with git SHA | ✅ ECR via OIDC (`publish.yml`) |
+| 2.7 | Bash/Python dev tooling: `dev.sh` ✅; add `db-backup.sh`, `seed-demo.sh`, `rotate-logs` via logrotate | ✅ |
+| 2.8 | Linux VM deployment: `vm-bootstrap.sh` ✅ → Caddy/Nginx TLS, systemd unit for compose, ufw, non-root deploy user, SSH keys only | ✅ written; not yet run on a real VM |
+| 2.9 | CD job: on tag, SSH to VM → pull images → `docker compose up -d` → smoke test `/readyz` | ✅ written; not yet run |
+| 2.10 | Runbook: "VM is down", "worker stuck", "Claude API errors" | ✅ [RUNBOOK.md](RUNBOOK.md) |
 
 **Exit criteria / demo:** push a failing commit to the demo repo → webhook fires → diagnosis appears
 on the public VM URL without manual action.

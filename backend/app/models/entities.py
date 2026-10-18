@@ -92,6 +92,16 @@ class ProposedFix(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class CheckRun(Base):
+    """Result of running static/test checks on a clone of a repository (Phase 2)."""
+    __tablename__ = "check_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    repository_id: Mapped[str] = mapped_column(ForeignKey("repositories.id"))
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # + running|completed|failed
+    results: Mapped[list] = mapped_column(JSON, default=list)  # one entry per check
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

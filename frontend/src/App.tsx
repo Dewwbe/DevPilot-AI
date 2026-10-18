@@ -2,8 +2,14 @@ import { useState } from "react";
 import { DiagnosePage } from "./pages/Diagnose";
 import { RepositoriesPage } from "./pages/Repositories";
 import { AuditPage } from "./pages/Audit";
+import { DiagnosesPage } from "./pages/Diagnoses";
 
-const tabs = { Diagnose: DiagnosePage, Repositories: RepositoriesPage, Audit: AuditPage } as const;
+const tabs = {
+  Diagnose: DiagnosePage,
+  Diagnoses: DiagnosesPage,
+  Repositories: RepositoriesPage,
+  Audit: AuditPage,
+} as const;
 type Tab = keyof typeof tabs;
 
 export default function App() {

@@ -15,3 +15,6 @@ dist/
 *.tfstate.*
 crash.log
 *.tfvars
+
+# TypeScript build cache
+*.tsbuildinfo

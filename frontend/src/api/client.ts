@@ -5,6 +5,11 @@ export interface Diagnosis {
   category: string; root_cause: string; evidence: string[]; confidence: number;
   fix_summary: string; patch: string; risk: Risk; model: string; warnings: string[];
 }
+export interface StoredDiagnosis {
+  id: string; repository: string; provider_run_id: string; category: string; root_cause: string;
+  evidence: string[]; confidence: number; model: string; created_at: string;
+  fix: { id: string; summary: string; patch: string; risk: Risk; status: string } | null;
+}
 export interface AuditEvent { actor: string; action: string; target: string; at: string }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -20,5 +25,6 @@ export const api = {
   analyze: (id: string) => req(`/api/repositories/${id}/analyses`, { method: "POST" }),
   diagnoseLog: (log: string) =>
     req<Diagnosis>("/api/diagnose-log", { method: "POST", body: JSON.stringify({ log }) }),
+  diagnoses: () => req<StoredDiagnosis[]>("/api/diagnoses"),
   audit: () => req<AuditEvent[]>("/api/audit"),
 };
