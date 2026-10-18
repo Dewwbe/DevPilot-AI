@@ -1,0 +1,7 @@
+server {
+  listen 8080;
+  root /usr/share/nginx/html;
+  # API_UPSTREAM defaults to the compose service name; on ECS the ALB routes /api/* itself.
+  location /api/ { proxy_pass http://${API_UPSTREAM}; proxy_read_timeout 120s; }
+  location / { try_files $uri /index.html; }
+}

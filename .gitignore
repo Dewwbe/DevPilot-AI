@@ -8,3 +8,10 @@ dist/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars

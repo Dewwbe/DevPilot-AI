@@ -16,7 +16,7 @@ Legend: ✅ provided in the base repository · ⬜ to implement
 | 0.2 | Copy `.env.example` → `.env`; obtain Claude API key; create fine-grained GitHub token (read-only Actions + Contents) | ⬜ |
 | 0.3 | Create a **demo target repo** with deliberately breakable CI (missing dependency, failing test, Dockerfile COPY error, YAML error) — this is your test bed and your interview demo | ⬜ |
 | 0.4 | `./scripts/dev.sh up` and confirm `/healthz`, `/readyz` and dashboard load | ⬜ |
-| 0.5 | Decide cloud: **Azure or AWS** (pick one; record it as ADR-002) | ⬜ |
+| 0.5 | Decide cloud: **Azure or AWS** (pick one; record it as ADR-002) | ✅ AWS (ECS Fargate + ECR) |
 
 **Exit criteria:** stack runs locally; CI passes on first PR.
 
