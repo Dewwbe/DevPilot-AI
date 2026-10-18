@@ -31,6 +31,10 @@ secrets:
   # Optional GitHub App credentials (task 3.9). Add these keys to the secret to enable PR creation.
   githubApp:
     enabled: false
+  # Sign in with GitHub (docs/AUTH.md). Add github_oauth_client_id, github_oauth_client_secret and
+  # session_secret to the secret, set enabled: true, and consider ingress.basicAuth.enabled: false.
+  oauth:
+    enabled: false
   basicAuthKey: basic_auth_htpasswd  # htpasswd line for the dashboard login (ingress basic auth)
 
 serviceAccount:

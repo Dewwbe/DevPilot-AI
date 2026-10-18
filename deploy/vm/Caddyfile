@@ -2,11 +2,12 @@
 # this VM and ports 80/443 must be reachable.
 #
 # Public (no login): the GitHub webhook (authenticated by its HMAC signature) and health probes.
-# Everything else, dashboard and API, requires HTTP basic auth until real auth lands (task 1.15).
+# Everything else requires HTTP basic auth. Once GitHub sign-in is configured (docs/AUTH.md) the
+# app protects itself, so you can delete the basic_auth block below.
 {$DEVPILOT_DOMAIN} {
 	encode zstd gzip
 
-	@public path /api/webhooks/github /healthz /readyz
+	@public path /api/webhooks/github /api/auth/* /healthz /readyz
 	handle @public {
 		reverse_proxy api:8000
 	}

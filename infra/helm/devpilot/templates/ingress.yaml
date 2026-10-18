@@ -25,6 +25,8 @@ spec:
           {{- range $p := list "/api/webhooks/github" "/healthz" "/readyz" }}
           - { path: {{ $p }}, pathType: Exact, backend: { service: { name: {{ $api }}, port: { number: 8000 } } } }
           {{- end }}
+          # GitHub sign-in: the callback must be reachable without basic auth
+          - { path: /api/auth, pathType: Prefix, backend: { service: { name: {{ $api }}, port: { number: 8000 } } } }
 ---
 # Everything else (dashboard + API), behind basic auth until real authentication lands.
 apiVersion: networking.k8s.io/v1

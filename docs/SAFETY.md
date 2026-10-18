@@ -23,12 +23,12 @@ flowchart LR
 
 | STRIDE | Threat | Control | Status | Evidence |
 |---|---|---|---|---|
-| Spoofing | Anyone who can reach the URL acts as a reviewer | HTTP basic auth at Caddy / ingress-nginx; webhook and health paths excepted | Partial: one shared login, reviewer name is self-declared | `deploy/vm/Caddyfile`, `templates/ingress.yaml`. Real auth is roadmap 1.15 |
+| Spoofing | Anyone who can reach the URL acts as a reviewer | GitHub OAuth sign-in (signed HttpOnly session cookie, optional allow-list); basic auth at the proxy as an alternative. Webhook and health paths are public by design | Done when OAuth is configured; open in local mode | `test_auth.py`, docs/AUTH.md |
 | Tampering | Malformed or hostile input | Pydantic validation (repo name pattern, enums, size limits); ORM with bound parameters, no raw SQL | Done | `test_api.py::test_connect_repository` (422 on bad input) |
-| Repudiation | A reviewer denies an approval | Append-only `audit_events` for approve/reject/PR/webhook/checks | Partial: actor is client-supplied until 1.15 | `test_api.py::test_high_risk_fix_requires_justification` |
+| Repudiation | A reviewer denies an approval | Append-only `audit_events`; with sign-in on the reviewer is the session's GitHub login, never a client-supplied name | Done when OAuth is configured | `test_api.py::test_high_risk_fix_requires_justification` |
 | Info disclosure | Metrics or internals exposed | `/metrics` is not routed by ingress or Caddy; only in-cluster scraping | Done | `templates/ingress.yaml`, `Caddyfile` (path allow-list) |
 | Denial of service | Request flood or expensive calls | Body-size limit at ingress; Claude input trimmed to `max_log_chars` | Partial: no per-client rate limiting, and `/api/diagnose-log` is not covered by the per-repo token budget | Gap G1 |
-| Elevation | CSRF using cached basic-auth credentials | Writes need `application/json`, which forces a CORS preflight; CORS allows only the dev origin | Partial | `main.py` CORS config |
+| Elevation | CSRF | `SameSite=Lax` session cookie, OAuth `state` check, and a required `X-Requested-With: devpilot` header on writes (a cross-site form cannot set it) | Done | `test_auth.py::test_writes_need_the_csrf_header`, `::test_callback_rejects_missing_or_tampered_state` |
 
 ## 2. API to workers (queue)
 
@@ -90,7 +90,7 @@ flowchart LR
 | G1 | No per-client rate limiting; `/api/diagnose-log` bypasses the per-repo token budget | Add rate limiting at the ingress and a global daily budget for ad-hoc diagnoses |
 | G2 | Redis has no AUTH and no TLS | Enable in-transit encryption plus an auth token and use `rediss://` |
 | G3 | Check-worker holds the Docker socket; sandbox has outbound network | Rootless Docker or gVisor/Firecracker, a docker-socket proxy, and an egress allow-list |
-| G4 | Real authentication and per-user identity (roadmap 1.15) | GitHub OAuth or a single admin login; derive reviewer from the session |
+| G4 | Authentication is optional and there is one shared workspace: no per-user or per-organisation access control | Make sign-in mandatory outside local mode, then scope repositories to their connecting user or organisation |
 | G5 | Redaction is regex-based | Add entropy-based detection and a secrets scanner pass before LLM calls |
 
 ## AI-specific risk notes
