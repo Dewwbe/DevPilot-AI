@@ -37,6 +37,25 @@ def _seed_fix(risk: RiskLevel) -> str:
     return fix.id
 
 
+def test_list_diagnoses_returns_stored_diagnosis_with_fix(client):
+    repo_id = client.post("/api/repositories", json={"full_name": "octocat/demo"}).json()["id"]
+    s = next(get_session())
+    run = PipelineRun(repository_id=repo_id, provider_run_id="77", conclusion="failure")
+    s.add(run)
+    s.flush()
+    d = Diagnosis(pipeline_run_id=run.id, category="dependency", root_cause="missing pkg",
+                  evidence=["No matching distribution"], confidence=0.8, model="fake")
+    s.add(d)
+    s.flush()
+    s.add(ProposedFix(diagnosis_id=d.id, summary="pin foo", risk=RiskLevel.low))
+    s.commit()
+
+    rows = client.get("/api/diagnoses").json()
+    assert len(rows) == 1
+    assert rows[0]["repository"] == "octocat/demo" and rows[0]["provider_run_id"] == "77"
+    assert rows[0]["fix"]["summary"] == "pin foo" and rows[0]["fix"]["status"] == "pending"
+
+
 def test_high_risk_fix_requires_justification(client):
     fix_id = _seed_fix(RiskLevel.high)
     body = {"decision": "approved", "reviewer": "dewmini"}

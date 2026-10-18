@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+{{- $tls := .Values.ingress.tls }}
+{{- $api := printf "%s-api" .Release.Name }}
+# Public paths: the GitHub webhook (HMAC-signed) and health probes. /metrics is deliberately not
+# routed, so Prometheus scrapes it inside the cluster only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-public
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+  annotations:
+    {{- if $tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ $tls.clusterIssuer | quote }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tls.enabled }}
+  tls: [{ hosts: [{{ .Values.ingress.host | quote }}], secretName: {{ $tls.secretName }} }]
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- range $p := list "/api/webhooks/github" "/healthz" "/readyz" }}
+          - { path: {{ $p }}, pathType: Exact, backend: { service: { name: {{ $api }}, port: { number: 8000 } } } }
+          {{- end }}
+---
+# Everything else (dashboard + API), behind basic auth until real authentication lands.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-app
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+  annotations:
+    {{- if $tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ $tls.clusterIssuer | quote }}
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    {{- end }}
+    {{- if .Values.ingress.basicAuth.enabled }}
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: {{ .Release.Name }}-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "DevPilot AI"
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tls.enabled }}
+  tls: [{ hosts: [{{ .Values.ingress.host | quote }}], secretName: {{ $tls.secretName }} }]
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - { path: /api, pathType: Prefix, backend: { service: { name: {{ $api }}, port: { number: 8000 } } } }
+          - { path: /, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-web, port: { number: 80 } } } }
+{{- end }}

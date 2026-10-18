@@ -1,0 +1,79 @@
+name: Publish and deploy
+
+# - push to main : build images, push to ECR tagged with the git SHA (task 2.6)
+# - push of v*   : same, plus tag the images with the version, then deploy to the VM (task 2.9)
+# Repo variables: AWS_ROLE_ARN, AWS_REGION (optional), DEVPILOT_URL (e.g. https://devpilot.example.com)
+# Repo secrets (tag deploys): VM_HOST, VM_USER, VM_SSH_KEY, VM_KNOWN_HOSTS
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  id-token: write  # OIDC to AWS, no long-lived keys
+  contents: read
+
+concurrency: publish-${{ github.ref }}
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push api, web and runner images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          for spec in api:backend web:frontend runner:backend/runner; do
+            name="devpilot-${spec%%:*}"; ctx="${spec#*:}"
+            docker build -t "$REGISTRY/$name:$TAG" -t "$REGISTRY/$name:${GITHUB_SHA}" "$ctx"
+            docker push --all-tags "$REGISTRY/$name"
+          done
+
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production  # add required reviewers here for a manual approval gate
+    steps:
+      - name: Deploy over SSH
+        env:
+          TAG: ${{ needs.publish.outputs.tag }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts  # pinned host key, no trust-on-first-use
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$VM_USER@$VM_HOST" \
+            "cd /opt/devpilot && git fetch --tags --force && git checkout -q '$TAG' && ./scripts/deploy.sh '$TAG'"
+
+      - name: External smoke test
+        if: vars.DEVPILOT_URL != ''
+        run: |
+          for _ in $(seq 1 12); do
+            curl -fsS "${{ vars.DEVPILOT_URL }}/readyz" && exit 0 || sleep 5
+          done
+          echo "readyz not healthy after deploy" >&2; exit 1

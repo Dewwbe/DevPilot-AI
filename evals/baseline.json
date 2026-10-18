@@ -1,0 +1,5 @@
+{
+  "heuristic": { "min_category_accuracy": 1.0, "min_evidence_validity": 1.0 },
+  "fake":      { "min_category_accuracy": 1.0,  "min_mention_rate": 1.0, "min_evidence_validity": 1.0 },
+  "real":      { "min_category_accuracy": 0.8,  "min_evidence_validity": 1.0 }
+}

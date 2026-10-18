@@ -1,0 +1,46 @@
+{{- if .Values.monitoring.serviceMonitor }}
+# Requires the Prometheus Operator CRDs (kube-prometheus-stack, see scripts/eks-addons.sh).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-api
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  endpoints: [{ port: http, path: /metrics, interval: 30s }]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-worker
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  endpoints: [{ port: metrics, path: /metrics, interval: 30s }]
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# Only the ingress controller may reach the API and web pods; the worker accepts nothing except
+# Prometheus scrapes. Outbound traffic is left open (Claude, GitHub, managed Postgres/Redis).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-ingress-only
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:  # ingress-nginx and Prometheus namespaces, plus pods of this release (web -> api)
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+        - podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }} } }
+{{- end }}

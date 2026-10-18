@@ -75,6 +75,7 @@ class Diagnosis(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_version: Mapped[str] = mapped_column(String(40), default="")  # which prompt produced it
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -90,6 +91,18 @@ class ProposedFix(Base):
     )
     decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # set once a pull request has been opened for this fix
+    pr_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class CheckRun(Base):
+    """Result of running static/test checks on a clone of a repository (Phase 2)."""
+    __tablename__ = "check_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    repository_id: Mapped[str] = mapped_column(ForeignKey("repositories.id"))
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # + running|completed|failed
+    results: Mapped[list] = mapped_column(JSON, default=list)  # one entry per check
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class AuditEvent(Base):

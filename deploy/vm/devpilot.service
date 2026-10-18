@@ -1,0 +1,21 @@
+# Installed to /etc/systemd/system/devpilot.service by scripts/vm-bootstrap.sh.
+# Starts the compose stack at boot and gives `systemctl status|restart devpilot`.
+# Compose settings (COMPOSE_FILE, REGISTRY, IMAGE_TAG, secrets) come from /opt/devpilot/.env.
+[Unit]
+Description=DevPilot AI (docker compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/devpilot
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

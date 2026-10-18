@@ -13,3 +13,12 @@ output "ecs_cluster" {
 output "ecs_service" {
   value = aws_ecs_service.app.name
 }
+
+output "ecr_runner_repo" {
+  value = aws_ecr_repository.repo["runner"].repository_url
+}
+
+output "github_publish_role_arn" {
+  description = "Set as the GitHub repo variable AWS_ROLE_ARN"
+  value       = aws_iam_role.github_publish.arn
+}

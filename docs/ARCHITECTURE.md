@@ -72,10 +72,12 @@ devpilot-ai/
 ├── frontend/                  React + TS dashboard (Diagnose, Repositories, Audit)
 ├── evals/                     labelled failure cases + evaluation harness
 ├── infra/
-│   ├── k8s/base/              Deployments, Services, ConfigMap, probes, limits (kustomize)
-│   ├── helm/                  Phase 3
-│   └── terraform/             Phase 3
-├── scripts/                   dev.sh, vm-bootstrap.sh, k8s-secrets.sh
+│   ├── k8s/base/              Plain manifests (kustomize), kept as a reference
+│   ├── helm/devpilot/         Helm chart: values-dev/prod, ingress+TLS, HPA, CSI secrets, dashboard
+│   ├── terraform/             ECR + ECS Fargate (cheap demo) and the GitHub OIDC publish role
+│   └── terraform-eks/         VPC, EKS, RDS, ElastiCache, Secrets Manager, IRSA
+├── deploy/vm/                 Production compose, Caddyfile, systemd unit, logrotate (Phase 2)
+├── scripts/                   dev.sh, deploy.sh, db-backup.sh, vm-bootstrap.sh, eks-addons.sh, ...
 ├── docs/                      ARCHITECTURE, ROADMAP, SAFETY, ADRs
 ├── .github/workflows/ci.yml   lint, test, audit, build, scan, manifest validation
 └── docker-compose.yml         postgres, redis, api, worker, web
@@ -126,7 +128,7 @@ erDiagram
 6. **Measured.** Every call logs model, tokens and latency; `evals/` tracks category accuracy
    and keyword recall so prompt changes are regression-tested.
 
-## 7. Security model (summary — full threat model in SAFETY.md, Phase 3)
+## 7. Security model (summary; full STRIDE threat model in [SAFETY.md](SAFETY.md))
 
 | Threat | Control |
 |---|---|
@@ -143,5 +145,92 @@ erDiagram
 | Stage | Environment | Notes |
 |---|---|---|
 | Local | `docker compose up` | All five services; SQLite only for unit tests |
-| Phase 2 | One Linux VM (Azure B2s or AWS t3.medium, Ubuntu) | Docker Compose, Nginx/Caddy TLS, ufw, systemd |
-| Phase 3 | AKS or EKS + managed Postgres + managed Redis | Helm chart, Key Vault / Secrets Manager, HPA on API, Azure Monitor / CloudWatch |
+| Cheap demo | ECS Fargate + ECR (`infra/terraform`) | One task with Postgres/Redis as containers; data is ephemeral. See [DEPLOY-AWS.md](DEPLOY-AWS.md) |
+| Phase 2 | One Linux VM (Ubuntu) | Docker Compose, Caddy TLS, ufw, systemd, nightly backups. See [DEPLOY-VM.md](DEPLOY-VM.md) |
+| Phase 3 | **EKS** + RDS + ElastiCache (`infra/terraform-eks`, `infra/helm`) | Helm chart, Secrets Manager via CSI, ingress + cert-manager TLS, HPA, Prometheus/Grafana, CloudWatch. See [DEPLOY-K8S.md](DEPLOY-K8S.md) |
+
+### 8.1 Kubernetes layout (Phase 3)
+
+```mermaid
+flowchart TB
+    User([Reviewer / GitHub webhook]) -->|HTTPS| NLB[AWS NLB]
+    NLB --> Ing[ingress-nginx<br/>TLS from cert-manager]
+    subgraph EKS[EKS cluster, namespace devpilot]
+        Ing -->|/api, /healthz, /readyz<br/>basic auth except webhook| API[api Deployment<br/>HPA 2-8 pods]
+        Ing -->|/| Web[web Deployment<br/>nginx-unprivileged]
+        API -->|enqueue| Worker[worker Deployment<br/>Celery, threads pool]
+        Mig[[migrate Job<br/>alembic upgrade head<br/>helm pre-upgrade hook]]
+        CSI[Secrets Store CSI driver]
+    end
+    API & Worker & Mig --> RDS[(RDS PostgreSQL)]
+    API & Worker --> Redis[(ElastiCache Redis)]
+    CSI -.->|IRSA role, read one secret| SM[AWS Secrets Manager]
+    Worker --> Claude[Claude API]
+    Worker --> GH[GitHub: logs, clone, PRs via GitHub App]
+    Prom[Prometheus] -.->|scrape /metrics: api:8000, worker:9100| API
+    Prom -.-> Worker
+    Prom --> Graf[Grafana dashboard + alerts]
+    EKS -.->|JSON logs via Fluent Bit| CW[CloudWatch Logs]
+```
+
+## 9. Reliability of the AI path (Phase 3)
+
+```mermaid
+flowchart TD
+    Fail[Failed run: webhook or API] --> Budget{Repo's daily<br/>token budget left?}
+    Budget -- no --> Heur[Heuristic classifier<br/>model=heuristic]
+    Budget -- yes --> Breaker{Circuit breaker<br/>closed or half-open?}
+    Breaker -- open --> Heur
+    Breaker -- ok --> Claude[Claude call<br/>forced tool use, cached system prompt]
+    Claude -- error or timeout --> Count[Record failure,<br/>maybe open breaker] --> Heur
+    Claude -- ok --> Ground[Grounding check +<br/>deterministic risk]
+    Ground --> Store[(Diagnosis row:<br/>model, tokens, prompt_version)]
+    Heur --> Store
+    Store --> Metrics[Prometheus metrics: latency, tokens, cost, category]
+```
+
+- **Per-repo daily token budget** (`DEVPILOT_REPO_DAILY_TOKEN_BUDGET`, summed from stored
+  diagnoses for the UTC day) stops one noisy repository from burning the whole spend.
+- **Circuit breaker** (`DEVPILOT_LLM_BREAKER_*`): after N consecutive failures Claude calls are
+  rejected immediately for a cooldown, then one trial call decides whether to close it.
+- **Prompt caching:** the system prompt is marked `cache_control: ephemeral`. It only takes
+  effect once the cached prefix is long enough for the model's minimum, so today's short prompt
+  mostly will not cache; the cache-read token count is recorded so you can see when it does.
+- **Prompt version** (`diagnose-v1`) is stored on every diagnosis so a quality change can be tied
+  to the prompt that produced it. Bump it whenever the prompt or schema changes.
+- **Evals:** `evals/run_evals.py` runs on every PR (heuristic and FakeClaude modes, with a baseline
+  gate) and nightly against real Claude with a spend cap.
+
+## 10. From approved fix to pull request (Phase 3)
+
+```mermaid
+sequenceDiagram
+    actor R as Reviewer
+    participant API
+    participant W as Worker
+    participant GH as GitHub (App installation)
+    R->>API: POST /fixes/{id}/decision (approved)
+    API-->>R: fix.approved audited
+    R->>API: POST /fixes/{id}/open-pr
+    API->>API: only approved, has patch, no PR yet, App configured
+    API->>W: open_fix_pr task
+    W->>GH: installation token (JWT RS256 -> short-lived)
+    W->>GH: clone default branch (token via env, not URL)
+    W->>W: git apply --check, then branch devpilot/fix-xxxx, commit
+    W->>GH: push the new branch (never forced, never the default branch)
+    W->>GH: open pull request
+    W->>API: store pr_url, audit fix.pr_opened
+    R->>GH: reviews the diff, CI runs, human merges
+```
+
+The App holds only Contents: write and Pull requests: write. DevPilot never merges.
+
+## 11. Observability (Phase 3)
+
+| Signal | Source | Where it shows up |
+|---|---|---|
+| Diagnosis latency, tokens, estimated cost, failure categories, approval rate | `/metrics` (API) and worker port 9100 | Grafana dashboard `DevPilot AI` (shipped in the chart) |
+| Breaker state, Claude errors, fallback share, budget degradations | same | Dashboard + Prometheus alerts (`PrometheusRule`) |
+| API request latency and 5xx by route | `devpilot_http_request_duration_seconds` | Dashboard + alert |
+| Structured JSON logs | structlog to stdout | CloudWatch Logs through the EKS Container Insights addon |
+| Who did what | `audit_events` table, `/api/audit` | Dashboard Audit page |

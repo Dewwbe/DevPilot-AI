@@ -41,3 +41,9 @@ variable "desired_count" {
   type        = number
   default     = 1
 }
+
+variable "github_repo" {
+  description = "owner/name of the GitHub repo allowed to push images to ECR via OIDC"
+  type        = string
+  default     = "Dewwbe/DevPilot-AI"
+}

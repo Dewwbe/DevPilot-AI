@@ -34,7 +34,7 @@ Legend: ✅ provided in the base repository · ⬜ to implement
 | 1.4 | `claude_client`: forced tool use, timeouts, retries, token + latency capture | ✅ |
 | 1.5 | `diagnoser`: grounding check, confidence cap, deterministic risk, offline fallback | ✅ |
 | 1.6 | `POST /api/diagnose-log` + dashboard Diagnose page | ✅ |
-| 1.7 | Add Alembic and replace `create_all` with migrations | ⬜ |
+| 1.7 | Add Alembic and replace `create_all` with migrations | ✅ (done in Phase 3; verified on an existing database) |
 | 1.8 | Extend analyzer: Java/Go manifests, lockfile detection, test-framework detection | ⬜ |
 
 ### Sprint 2 (Weeks 3–4): GitHub integration + review loop
@@ -60,14 +60,14 @@ root cause, verified evidence, proposed patch, risk badge → approve → event 
 |---|---|---|
 | 2.1 | Multi-stage, non-root Dockerfiles; Compose stack with healthchecks and limits | ✅ |
 | 2.2 | GitHub Actions: ruff, pytest + coverage, pip-audit, frontend type-check/build, image build | ✅ |
-| 2.3 | Trivy image scan and kubeconform manifest validation in CI | ✅ (tighten: fail on CRITICAL) |
-| 2.4 | **Check runner**: worker launches a throwaway container to run ruff/pytest/eslint/pip-audit on a cloned repo; stores results | ⬜ |
-| 2.5 | **Webhook**: `POST /api/webhooks/github` (signature-verified) on `workflow_run` = failure → auto-diagnose | ⬜ |
-| 2.6 | Publish images to GHCR (or ACR/ECR) on merge to `main`; tag with git SHA | ⬜ |
-| 2.7 | Bash/Python dev tooling: `dev.sh` ✅; add `db-backup.sh`, `seed-demo.sh`, `rotate-logs` via logrotate | ⬜ |
-| 2.8 | Linux VM deployment: `vm-bootstrap.sh` ✅ → Caddy/Nginx TLS, systemd unit for compose, ufw, non-root deploy user, SSH keys only | ⬜ |
-| 2.9 | CD job: on tag, SSH to VM → pull images → `docker compose up -d` → smoke test `/readyz` | ⬜ |
-| 2.10 | Runbook: "VM is down", "worker stuck", "Claude API errors" | ⬜ |
+| 2.3 | Trivy image scan and kubeconform manifest validation in CI | ✅ fails on fixable CRITICAL (api, web) |
+| 2.4 | **Check runner**: worker launches a throwaway container to run ruff/pytest/eslint/pip-audit on a cloned repo; stores results | ✅ opt-in `checks` profile; API only, no UI yet |
+| 2.5 | **Webhook**: `POST /api/webhooks/github` (signature-verified) on `workflow_run` = failure → auto-diagnose | ✅ plus `GET /api/diagnoses` and a Diagnoses page |
+| 2.6 | Publish images to GHCR (or ACR/ECR) on merge to `main`; tag with git SHA | ✅ ECR via OIDC (`publish.yml`) |
+| 2.7 | Bash/Python dev tooling: `dev.sh` ✅; add `db-backup.sh`, `seed-demo.sh`, `rotate-logs` via logrotate | ✅ |
+| 2.8 | Linux VM deployment: `vm-bootstrap.sh` ✅ → Caddy/Nginx TLS, systemd unit for compose, ufw, non-root deploy user, SSH keys only | ✅ written; not yet run on a real VM |
+| 2.9 | CD job: on tag, SSH to VM → pull images → `docker compose up -d` → smoke test `/readyz` | ✅ written; not yet run |
+| 2.10 | Runbook: "VM is down", "worker stuck", "Claude API errors" | ✅ [RUNBOOK.md](RUNBOOK.md) |
 
 **Exit criteria / demo:** push a failing commit to the demo repo → webhook fires → diagnosis appears
 on the public VM URL without manual action.
@@ -79,16 +79,16 @@ on the public VM URL without manual action.
 | # | Task | Status |
 |---|---|---|
 | 3.1 | Kubernetes base manifests: probes, requests/limits, non-root, read-only FS | ✅ |
-| 3.2 | Convert to Helm chart with `values-dev.yaml` / `values-prod.yaml` | ⬜ |
-| 3.3 | Provision AKS **or** EKS + managed Postgres + managed Redis (Terraform preferred; portal/CLI acceptable with documented steps) | ⬜ |
-| 3.4 | Secrets via Azure Key Vault / AWS Secrets Manager CSI driver; remove plain K8s Secret | ⬜ |
-| 3.5 | Ingress + TLS (cert-manager); HPA on API | ⬜ |
-| 3.6 | Observability: `/metrics` (Prometheus), dashboards for diagnosis latency, token cost per day, failure categories, approval rate; ship JSON logs to Azure Monitor / CloudWatch | ⬜ |
-| 3.7 | AI reliability: per-repo daily token budget, circuit breaker on Claude errors, prompt caching for the system prompt, prompt version stored on each diagnosis | ⬜ |
-| 3.8 | Evals in CI: run harness against FakeClaude on every PR; nightly against real Claude with a cost cap | ⬜ |
-| 3.9 | Approved fix → open PR on new branch via GitHub App (`contents:write`, `pull_requests:write` only) | ⬜ |
-| 3.10 | Deployment assistant: generate Dockerfile / K8s manifest for a profiled repo; validate with hadolint + kubeconform before showing | ⬜ |
-| 3.11 | Documentation: SAFETY.md threat model (STRIDE), deployment procedure, ADRs, architecture diagrams, 3-minute demo video | ⬜ |
+| 3.2 | Convert to Helm chart with `values-dev.yaml` / `values-prod.yaml` | ✅ `infra/helm/devpilot`; lint + kubeconform clean, not yet installed on a cluster |
+| 3.3 | Provision AKS **or** EKS + managed Postgres + managed Redis (Terraform preferred; portal/CLI acceptable with documented steps) | ✅ `infra/terraform-eks` (validated, not applied) |
+| 3.4 | Secrets via Azure Key Vault / AWS Secrets Manager CSI driver; remove plain K8s Secret | ✅ CSI + IRSA; chart authors no Secret (driver syncs one at runtime) |
+| 3.5 | Ingress + TLS (cert-manager); HPA on API | ✅ ingress-nginx + cert-manager, HPA, PDB (not yet run on a cluster) |
+| 3.6 | Observability: `/metrics` (Prometheus), dashboards for diagnosis latency, token cost per day, failure categories, approval rate; ship JSON logs to Azure Monitor / CloudWatch | ✅ `/metrics` on api and worker, Grafana dashboard, alert rules, CloudWatch addon; live check of metrics endpoints done locally |
+| 3.7 | AI reliability: per-repo daily token budget, circuit breaker on Claude errors, prompt caching for the system prompt, prompt version stored on each diagnosis | ✅ tested; prompt caching only applies once the prompt exceeds the model minimum |
+| 3.8 | Evals in CI: run harness against FakeClaude on every PR; nightly against real Claude with a cost cap | ✅ PR gate (heuristic + fake) and nightly real run with cost cap; only 3 seed cases |
+| 3.9 | Approved fix → open PR on new branch via GitHub App (`contents:write`, `pull_requests:write` only) | ✅ API + worker, tested against a local git remote; no UI button, not tried on real GitHub |
+| 3.10 | Deployment assistant: generate Dockerfile / K8s manifest for a profiled repo; validate with hadolint + kubeconform before showing | ✅ API; validated with real hadolint + kubeconform; templates fallback when Claude is unavailable |
+| 3.11 | Documentation: SAFETY.md threat model (STRIDE), deployment procedure, ADRs, architecture diagrams, 3-minute demo video | ✅ docs done; the demo video is yours to record ([DEMO.md](DEMO.md)) |
 
 **Exit criteria / demo:** public HTTPS URL on Kubernetes; Grafana/Azure Monitor dashboard showing
 real metrics; one approved fix opened as a PR end-to-end.

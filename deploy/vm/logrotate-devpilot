@@ -1,0 +1,11 @@
+# Installed to /etc/logrotate.d/devpilot. Rotates the deploy/backup script logs.
+# Container logs are rotated by Docker itself (json-file max-size/max-file in the compose file).
+/var/log/devpilot/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

@@ -5,7 +5,8 @@ RUN npm ci || npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# Unprivileged variant: runs as uid 101 and listens on 8080, so it passes runAsNonRoot in Kubernetes.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY --from=build /src/dist /usr/share/nginx/html
 ENV API_UPSTREAM=api:8000
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

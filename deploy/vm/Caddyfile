@@ -1,0 +1,31 @@
+# Automatic HTTPS (Let's Encrypt) for {$DEVPILOT_DOMAIN}. The domain's DNS A record must point at
+# this VM and ports 80/443 must be reachable.
+#
+# Public (no login): the GitHub webhook (authenticated by its HMAC signature) and health probes.
+# Everything else, dashboard and API, requires HTTP basic auth until real auth lands (task 1.15).
+{$DEVPILOT_DOMAIN} {
+	encode zstd gzip
+
+	@public path /api/webhooks/github /healthz /readyz
+	handle @public {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		basic_auth {
+			{$DEVPILOT_BASIC_USER} {$DEVPILOT_BASIC_HASH}
+		}
+		handle /api/* {
+			reverse_proxy api:8000
+		}
+		handle {
+			reverse_proxy web:8080
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+}

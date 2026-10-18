@@ -15,3 +15,9 @@ dist/
 *.tfstate.*
 crash.log
 *.tfvars
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Eval reports (uploaded as CI artifacts)
+evals/results/

@@ -25,10 +25,29 @@ def get_engine():
     return _engine
 
 
+def run_migrations() -> None:
+    """Apply Alembic migrations up to head (idempotent)."""
+    from pathlib import Path
+
+    from alembic.config import Config
+
+    from alembic import command
+
+    root = Path(__file__).resolve().parents[2]  # backend/ locally, /app in the image
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "alembic"))
+    command.upgrade(cfg, "head")
+
+
 def init_db() -> None:
     from app.models import entities  # noqa: F401  (register tables)
 
-    Base.metadata.create_all(get_engine())
+    settings = get_settings()
+    if settings.env == "test":
+        Base.metadata.create_all(get_engine())  # tests use throwaway SQLite
+    elif settings.auto_migrate:
+        run_migrations()
+    # else: a migration Job (Helm hook) owns the schema; the API must not race it
 
 
 def get_session() -> Iterator[Session]:

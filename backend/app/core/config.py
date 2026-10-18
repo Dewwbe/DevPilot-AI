@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # GitHub
     github_token: str = ""
+    github_webhook_secret: str = ""  # HMAC secret for /api/webhooks/github; empty = disabled
 
     # Claude
     anthropic_api_key: str = ""
@@ -21,9 +22,38 @@ class Settings(BaseSettings):
     claude_timeout_s: float = 60.0
     claude_max_retries: int = 3
 
+    # AI reliability (Phase 3)
+    repo_daily_token_budget: int = 200_000  # per repository per UTC day; 0 = unlimited
+    llm_breaker_threshold: int = 5          # consecutive Claude failures before the breaker opens
+    llm_breaker_cooldown_s: int = 60        # how long it stays open before a trial request
+    # Cost estimate for dashboards (USD per million tokens). Set to your model's actual pricing.
+    price_input_per_mtok: float = 3.0
+    price_output_per_mtok: float = 15.0
+
+    # GitHub App used to open pull requests for approved fixes (contents:write +
+    # pull_requests:write only). Leave empty to disable PR creation.
+    github_app_id: str = ""
+    github_app_private_key: str = ""  # PEM; "\n" escapes are accepted for env files
+    github_app_installation_id: str = ""
+    github_git_base: str = "https://github.com"
+    github_api_base: str = "https://api.github.com"
+
+    # Operations
+    # Run Alembic on API start. The Helm chart sets this to false and runs a migration Job.
+    auto_migrate: bool = True
+    metrics_port: int = 9100   # Prometheus endpoint exposed by Celery workers
+
     # Safety
     workspace_root: str = "/tmp/devpilot-workspaces"
     max_log_chars: int = 40_000  # log tail sent to the LLM
+
+    # Check runner (throwaway containers for ruff/pytest/eslint/pip-audit on cloned repos)
+    runner_image: str = "devpilot-runner:latest"
+    runner_workspace_volume: str = "devpilot-workspaces"  # docker volume shared with the worker
+    runner_timeout_s: int = 600
+    runner_memory: str = "1g"
+    runner_cpus: float = 1.0
+    runner_network: str = "bridge"  # checks install dependencies; use "none" for offline-only
 
 
 @lru_cache

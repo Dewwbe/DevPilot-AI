@@ -1,0 +1,100 @@
+# Production stack for a single Linux VM. Images come from the registry (tagged by git SHA/tag).
+# Only Caddy publishes ports (80/443); everything else stays on the internal network.
+# Used via COMPOSE_FILE=deploy/vm/docker-compose.prod.yml (set in .env) so plain
+# `docker compose ...` and scripts/*.sh all target this file on the VM.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-app-env: &app-env
+  DEVPILOT_ENV: production
+  DEVPILOT_DATABASE_URL: postgresql+psycopg://devpilot:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/devpilot
+  DEVPILOT_REDIS_URL: redis://redis:6379/0
+  DEVPILOT_ANTHROPIC_API_KEY: ${DEVPILOT_ANTHROPIC_API_KEY:-}
+  DEVPILOT_GITHUB_TOKEN: ${DEVPILOT_GITHUB_TOKEN:-}
+  DEVPILOT_GITHUB_WEBHOOK_SECRET: ${DEVPILOT_GITHUB_WEBHOOK_SECRET:-}
+  DEVPILOT_CLAUDE_MODEL: ${DEVPILOT_CLAUDE_MODEL:-claude-sonnet-5-5}
+  DEVPILOT_REPO_DAILY_TOKEN_BUDGET: ${DEVPILOT_REPO_DAILY_TOKEN_BUDGET:-200000}
+  DEVPILOT_GITHUB_APP_ID: ${DEVPILOT_GITHUB_APP_ID:-}
+  DEVPILOT_GITHUB_APP_INSTALLATION_ID: ${DEVPILOT_GITHUB_APP_INSTALLATION_ID:-}
+  DEVPILOT_GITHUB_APP_PRIVATE_KEY: ${DEVPILOT_GITHUB_APP_PRIVATE_KEY:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devpilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: devpilot
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U devpilot"], interval: 10s, retries: 10 }
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 10s, retries: 10 }
+    logging: *logging
+
+  api:
+    image: ${REGISTRY:?set REGISTRY}/devpilot-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *app-env
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
+    logging: *logging
+
+  worker:
+    image: ${REGISTRY}/devpilot-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info -P threads --concurrency=2
+    environment: *app-env
+    depends_on: [api]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1g } } }
+    logging: *logging
+
+  # Optional sandboxed checks (holds the Docker socket): COMPOSE_PROFILES=checks in .env
+  check-worker:
+    profiles: ["checks"]
+    image: ${REGISTRY}/devpilot-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info -P threads --concurrency=1 -Q checks
+    environment:
+      <<: *app-env
+      DEVPILOT_RUNNER_IMAGE: ${REGISTRY}/devpilot-runner:${IMAGE_TAG:-latest}
+      DEVPILOT_RUNNER_WORKSPACE_VOLUME: devpilot-workspaces
+    group_add: ["${DOCKER_GID:-999}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/tmp/devpilot-workspaces
+    depends_on: [api]
+    deploy: { resources: { limits: { cpus: "0.5", memory: 512m } } }
+    logging: *logging
+
+  web:
+    image: ${REGISTRY}/devpilot-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on: [api]
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DEVPILOT_DOMAIN: ${DEVPILOT_DOMAIN:?set DEVPILOT_DOMAIN}
+      DEVPILOT_BASIC_USER: ${DEVPILOT_BASIC_USER:?set DEVPILOT_BASIC_USER}
+      DEVPILOT_BASIC_HASH: ${DEVPILOT_BASIC_HASH:?set DEVPILOT_BASIC_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, web]
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+  workspaces:
+    name: devpilot-workspaces

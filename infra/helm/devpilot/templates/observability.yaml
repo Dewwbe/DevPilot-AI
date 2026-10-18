@@ -1,0 +1,62 @@
+{{- if .Values.monitoring.serviceMonitor }}
+# Grafana dashboard, picked up by the kube-prometheus-stack Grafana sidecar (label below).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-dashboard
+  labels:
+    {{- include "devpilot.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  devpilot.json: |-
+{{ .Files.Get "files/grafana-dashboard.json" | indent 4 }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-alerts
+  labels: {{- include "devpilot.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: devpilot
+      rules:
+        - alert: DevPilotClaudeCircuitOpen
+          expr: max(devpilot_llm_circuit_open) == 1
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: Claude circuit breaker open for 5m; diagnoses are using the offline fallback
+            runbook: docs/RUNBOOK.md#3-claude-api-errors
+        - alert: DevPilotHighFallbackShare
+          expr: >
+            sum(increase(devpilot_diagnoses_total{model="heuristic"}[30m]))
+            / clamp_min(sum(increase(devpilot_diagnoses_total[30m])), 1) > 0.5
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: More than half of diagnoses skipped Claude (outage, budget or missing key)
+        - alert: DevPilotDiagnosisSlow
+          expr: histogram_quantile(0.95, sum(rate(devpilot_diagnosis_latency_seconds_bucket[10m])) by (le)) > 30
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: p95 Claude diagnosis latency above 30s
+        - alert: DevPilotApi5xx
+          expr: >
+            sum(rate(devpilot_http_request_duration_seconds_count{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(devpilot_http_request_duration_seconds_count[5m])), 0.001) > 0.05
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: More than 5% of API requests are failing
+        - alert: DevPilotDailySpendHigh
+          expr: sum(increase(devpilot_llm_cost_usd_total[24h])) > {{ .Values.monitoring.dailySpendAlertUsd }}
+          labels: { severity: warning }
+          annotations:
+            summary: Estimated Claude spend in the last 24h exceeded ${{ .Values.monitoring.dailySpendAlertUsd }}
+        - alert: DevPilotWebhookBadSignatures
+          expr: sum(increase(devpilot_webhook_events_total{result="bad_signature"}[15m])) > 5
+          labels: { severity: warning }
+          annotations:
+            summary: Repeated webhook deliveries with invalid signatures (wrong secret or probing)
+{{- end }}
