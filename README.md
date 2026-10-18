@@ -39,4 +39,5 @@ need a written justification · every action is audited · fixes become PRs, nev
 - [Safety and threat model (STRIDE)](docs/SAFETY.md)
 - [Architecture decision records](docs/adr/)
 - Deploying: [ECS Fargate](docs/DEPLOY-AWS.md) · [Linux VM](docs/DEPLOY-VM.md) · [EKS + Helm](docs/DEPLOY-K8S.md)
+- [Sign in with GitHub (OAuth)](docs/AUTH.md)
 - [Runbook](docs/RUNBOOK.md) · [Demo script](docs/DEMO.md) · [How AI tools were used](docs/AI-USAGE.md)
