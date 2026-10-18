@@ -1,0 +1,50 @@
+{
+  "mode": "heuristic",
+  "prompt_version": "diagnose-v1",
+  "cases": 3,
+  "category_accuracy": 1,
+  "mention_rate": 1,
+  "evidence_validity": 1,
+  "avg_tokens": 0,
+  "avg_latency_ms": 0,
+  "estimated_cost_usd": 0.0,
+  "stopped_by_cost_cap": false,
+  "rows": [
+    {
+      "case": "docker_copy_missing_file",
+      "category_ok": true,
+      "mentions_ok": true,
+      "evidence_ok": true,
+      "model": "heuristic",
+      "tokens": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "latency_ms": 0,
+      "prompt_version": "diagnose-v1"
+    },
+    {
+      "case": "failing_unit_test",
+      "category_ok": true,
+      "mentions_ok": true,
+      "evidence_ok": true,
+      "model": "heuristic",
+      "tokens": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "latency_ms": 0,
+      "prompt_version": "diagnose-v1"
+    },
+    {
+      "case": "missing_python_dependency",
+      "category_ok": true,
+      "mentions_ok": true,
+      "evidence_ok": true,
+      "model": "heuristic",
+      "tokens": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "latency_ms": 0,
+      "prompt_version": "diagnose-v1"
+    }
+  ]
+}
