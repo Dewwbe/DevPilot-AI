@@ -26,6 +26,11 @@ app.kubernetes.io/component: {{ .component }}
 {{- $_ := set $m "github_app_private_key" "DEVPILOT_GITHUB_APP_PRIVATE_KEY" -}}
 {{- $_ := set $m "github_app_installation_id" "DEVPILOT_GITHUB_APP_INSTALLATION_ID" -}}
 {{- end -}}
+{{- if .Values.secrets.oauth.enabled -}}
+{{- $_ := set $m "github_oauth_client_id" "DEVPILOT_GITHUB_OAUTH_CLIENT_ID" -}}
+{{- $_ := set $m "github_oauth_client_secret" "DEVPILOT_GITHUB_OAUTH_CLIENT_SECRET" -}}
+{{- $_ := set $m "session_secret" "DEVPILOT_SESSION_SECRET" -}}
+{{- end -}}
 {{- toYaml $m -}}
 {{- end }}
 

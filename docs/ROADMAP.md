@@ -42,12 +42,12 @@ Legend: ✅ provided in the base repository · ⬜ to implement
 | # | Task | Status |
 |---|---|---|
 | 1.9 | `github_client`: repo metadata, failed runs, failed jobs, job logs | ✅ (verify against your demo repo) |
-| 1.10 | `GET /api/repositories/{id}/runs` — list failed runs from GitHub in the dashboard | ⬜ |
-| 1.11 | Diagnoses list + detail page backed by DB (currently only ad-hoc diagnose) | ⬜ |
-| 1.12 | Approve / reject UI wired to `POST /api/fixes/{id}/decision` | ⬜ (API ✅) |
+| 1.10 | `GET /api/repositories/{id}/runs` — list failed runs from GitHub in the dashboard | ✅ `/api/repositories/{id}/runs` and the repository page |
+| 1.11 | Diagnoses list + detail page backed by DB (currently only ad-hoc diagnose) | ✅ History page with filters, detail page, and pasted logs are saved too |
+| 1.12 | Approve / reject UI wired to `POST /api/fixes/{id}/decision` | ✅ Approve/Reject on the diagnosis page (reviewer = signed-in user) (API ✅) |
 | 1.13 | "Explain this file" and "Generate tests for this function" endpoints (Claude, read-only) | ⬜ |
 | 1.14 | Grow `evals/cases` to ≥ 15 real failures from your demo repo; record baseline accuracy | ⬜ (3 seed cases ✅) |
-| 1.15 | Simple auth (GitHub OAuth or a single admin login) so reviewer identity is real | ⬜ |
+| 1.15 | Simple auth (GitHub OAuth or a single admin login) so reviewer identity is real | ✅ GitHub OAuth, see docs/AUTH.md (needs your OAuth App to turn on) |
 
 **Exit criteria / demo:** break the demo repo → paste or select the failed run → see category,
 root cause, verified evidence, proposed patch, risk badge → approve → event appears in audit trail.

@@ -61,3 +61,28 @@ def test_upgrade_is_idempotent(tmp_path, monkeypatch):
     cfg, _ = _config(tmp_path, monkeypatch)
     command.upgrade(cfg, "head")
     command.upgrade(cfg, "head")  # second run must be a no-op
+
+
+def test_0003_upgrades_a_phase3_schema_making_pipeline_run_nullable(tmp_path, monkeypatch):
+    """Phase 3 databases have diagnoses.pipeline_run_id NOT NULL and none of the history columns."""
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    cfg, url = _config(tmp_path, monkeypatch)
+    command.upgrade(cfg, "head")
+    engine = sa.create_engine(url)
+    with engine.begin() as conn:
+        op = Operations(MigrationContext.configure(conn))
+        with op.batch_alter_table("diagnoses") as batch:
+            batch.alter_column("pipeline_run_id", existing_type=sa.String(36), nullable=False)
+            for col in ("source", "created_by", "log_excerpt"):
+                batch.drop_column(col)
+    command.stamp(cfg, "0002")
+
+    cols = {c["name"]: c for c in sa.inspect(engine).get_columns("diagnoses")}
+    assert not cols["pipeline_run_id"]["nullable"] and "source" not in cols
+
+    command.upgrade(cfg, "head")
+    cols = {c["name"]: c for c in sa.inspect(sa.create_engine(url)).get_columns("diagnoses")}
+    assert cols["pipeline_run_id"]["nullable"]
+    assert {"source", "created_by", "log_excerpt"} <= set(cols)

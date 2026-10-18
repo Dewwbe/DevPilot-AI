@@ -22,6 +22,7 @@ dependencies = [
     "alembic>=1.13",
     "prometheus-client>=0.20",
     "pyjwt[crypto]>=2.8",
+    "itsdangerous>=2.2",
 ]
 
 [project.optional-dependencies]

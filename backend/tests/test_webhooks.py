@@ -116,3 +116,20 @@ def test_diagnosis_task_records_failure_when_github_fails(client, monkeypatch):
 
 def test_malformed_payload(client, queued):
     assert _post(client, b'{"workflow_run": {}}').status_code == 400
+
+
+def test_log_download_failures_get_actionable_messages():
+    import httpx
+
+    from app.workers.tasks import _friendly
+
+    def err(code):
+        req = httpx.Request("GET", "https://api.github.com/x")
+        resp = httpx.Response(code, request=req)
+        return httpx.HTTPStatusError("boom", request=req, response=resp)
+
+    assert "DEVPILOT_GITHUB_TOKEN" in _friendly(err(403))
+    assert "DEVPILOT_GITHUB_TOKEN" in _friendly(err(401))
+    assert "could not find" in _friendly(err(404))
+    assert "HTTP 502" in _friendly(err(502))
+    assert _friendly(RuntimeError("plain")) == "plain"

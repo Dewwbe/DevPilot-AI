@@ -7,6 +7,11 @@ resource "random_password" "webhook" {
   special = false
 }
 
+resource "random_password" "session" {
+  length  = 48
+  special = false
+}
+
 resource "aws_secretsmanager_secret" "app" {
   name                    = "${local.name}/app"
   recovery_window_in_days = local.is_prod ? 7 : 0
@@ -23,6 +28,10 @@ resource "aws_secretsmanager_secret_version" "app" {
     github_app_id              = "REPLACE_ME"
     github_app_private_key     = "REPLACE_ME"
     github_app_installation_id = "REPLACE_ME"
+    # Only mapped into the pods when the chart sets secrets.oauth.enabled (docs/AUTH.md)
+    github_oauth_client_id     = "REPLACE_ME"
+    github_oauth_client_secret = "REPLACE_ME"
+    session_secret             = random_password.session.result
   })
 
   # Once you have put real values, Terraform must not overwrite them.

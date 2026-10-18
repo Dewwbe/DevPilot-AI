@@ -4,6 +4,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import httpx
+
 from app.core import metrics
 from app.core.config import get_settings
 from app.core.db import get_session
@@ -23,6 +25,7 @@ from app.services.check_runner import run_checks
 from app.services.diagnoser import diagnose
 from app.services.github_app import GitHubAppAuth, build_pr_body, open_fix_pr
 from app.services.github_client import GitHubClient, shallow_clone
+from app.services.log_processing import extract_failure, redact
 from app.services.repo_analyzer import analyze_repository
 from app.workers.celery_app import celery_app
 
@@ -50,6 +53,19 @@ def analyze_repository_task(analysis_id: str) -> None:
         session.commit()
 
 
+def _friendly(exc: Exception) -> str:
+    """A message the dashboard can show as-is (it is stored on the diagnosis.failed event)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code in (401, 403):
+            return ("GitHub refused access to this run's logs. Downloading Actions logs always "
+                    "needs a token: set DEVPILOT_GITHUB_TOKEN with read access to Actions.")
+        if code == 404:
+            return "GitHub could not find this run or its logs (deleted or expired?)."
+        return f"GitHub returned HTTP {code} while fetching the logs."
+    return str(exc)[:300]
+
+
 @celery_app.task(name="diagnose_run")
 def diagnose_run_task(pipeline_run_id: str) -> None:
     session = next(get_session())
@@ -64,7 +80,7 @@ def diagnose_run_task(pipeline_run_id: str) -> None:
         # Webhook-triggered runs have no human watching: leave a visible trace, don't vanish.
         log.exception("diagnosis_log_fetch_failed", run_id=run.id)
         audit.record(session, actor="system", action="diagnosis.failed", target=run.id,
-                     detail={"repository": repo.full_name, "error": str(exc)[:300]})
+                     detail={"repository": repo.full_name, "error": _friendly(exc)})
         session.commit()
         return
     latest = (session.query(Analysis).filter_by(repository_id=repo.id, status="completed")
@@ -84,7 +100,8 @@ def diagnose_run_task(pipeline_run_id: str) -> None:
                      root_cause=result.root_cause, evidence=result.evidence,
                      confidence=result.confidence, model=result.model,
                      input_tokens=result.input_tokens, output_tokens=result.output_tokens,
-                     latency_ms=result.latency_ms, prompt_version=result.prompt_version)
+                     latency_ms=result.latency_ms, prompt_version=result.prompt_version,
+                     source="run", log_excerpt=extract_failure(redact(logs), max_chars=4000))
     session.add(diag)
     session.flush()
     if result.fix_summary:
