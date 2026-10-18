@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.core.logging import log
 from app.models.entities import RiskLevel
 from app.services.claude_client import ClaudeClient, LLMUnavailable
 from app.services.log_processing import classify_heuristic, extract_failure, redact
@@ -35,6 +36,10 @@ DIAGNOSIS_SCHEMA = {
     "required": ["category", "root_cause", "evidence", "confidence", "fix_summary",
                  "files_touched"],
 }
+
+# Bump whenever SYSTEM_PROMPT, the schema or the user template changes; stored on every diagnosis
+# so a regression can be traced to the prompt that produced it.
+PROMPT_VERSION = "diagnose-v1"
 
 SYSTEM_PROMPT = """You are a senior build engineer diagnosing a failed CI job.
 Rules:
@@ -62,6 +67,7 @@ class DiagnosisResult:
     input_tokens: int = 0
     output_tokens: int = 0
     latency_ms: int = 0
+    prompt_version: str = PROMPT_VERSION
     warnings: list[str] = field(default_factory=list)
 
 
@@ -84,27 +90,38 @@ def _validate_evidence(evidence: list[str], log: str) -> tuple[list[str], list[s
     return valid, warnings
 
 
+def _fallback(hint, reason: str) -> DiagnosisResult:
+    return DiagnosisResult(
+        category=hint.category,
+        root_cause="LLM unavailable; heuristic classification only.",
+        evidence=hint.evidence, confidence=0.3 if hint.evidence else 0.0,
+        fix_summary="", patch="", files_touched=[], risk=RiskLevel.low,
+        warnings=[reason],
+    )
+
+
 def diagnose(raw_log: str, repo_profile: dict, client: ClaudeClient | None = None,
-             max_chars: int = 40_000) -> DiagnosisResult:
+             max_chars: int = 40_000, use_llm: bool = True) -> DiagnosisResult:
+    """`use_llm=False` forces the offline path (e.g. the repo's daily token budget is spent)."""
     log_text = extract_failure(redact(raw_log), max_chars=max_chars)
     hint = classify_heuristic(log_text)
 
+    if not use_llm:
+        return _fallback(hint, "Daily token budget exhausted; heuristic classification only")
     try:
         client = client or ClaudeClient()
     except LLMUnavailable as exc:
-        return DiagnosisResult(
-            category=hint.category,
-            root_cause="LLM unavailable; heuristic classification only.",
-            evidence=hint.evidence, confidence=0.3 if hint.evidence else 0.0,
-            fix_summary="", patch="", files_touched=[], risk=RiskLevel.low,
-            warnings=[str(exc)],
-        )
+        return _fallback(hint, str(exc))
 
     user = (f"Repository profile:\n{repo_profile}\n\n"
             f"Heuristic hint: {hint.category}\n\n"
             f"Failure log (redacted, trimmed):\n```\n{log_text}\n```")
-    res = client.structured(system=SYSTEM_PROMPT, user=user,
-                            tool_name="report_diagnosis", schema=DIAGNOSIS_SCHEMA)
+    try:
+        res = client.structured(system=SYSTEM_PROMPT, user=user,
+                                tool_name="report_diagnosis", schema=DIAGNOSIS_SCHEMA)
+    except Exception as exc:  # noqa: BLE001  (API outage, rate limit, open circuit breaker)
+        log.warning("llm_failed_using_fallback", error=str(exc)[:200])
+        return _fallback(hint, f"Claude call failed ({type(exc).__name__}); used heuristic")
     d = res.data
     evidence, warnings = _validate_evidence(d.get("evidence", []), log_text)
     confidence = float(d.get("confidence", 0))

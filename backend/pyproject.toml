@@ -19,6 +19,9 @@ dependencies = [
     "anthropic>=0.40",
     "structlog>=24.1",
     "docker>=7.1",
+    "alembic>=1.13",
+    "prometheus-client>=0.20",
+    "pyjwt[crypto]>=2.8",
 ]
 
 [project.optional-dependencies]

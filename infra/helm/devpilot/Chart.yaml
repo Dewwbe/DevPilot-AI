@@ -1,0 +1,6 @@
+apiVersion: v2
+name: devpilot
+description: DevPilot AI - API, Celery worker and dashboard
+type: application
+version: 0.3.0
+appVersion: "0.3.0"

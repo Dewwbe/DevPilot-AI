@@ -34,7 +34,7 @@ Legend: ✅ provided in the base repository · ⬜ to implement
 | 1.4 | `claude_client`: forced tool use, timeouts, retries, token + latency capture | ✅ |
 | 1.5 | `diagnoser`: grounding check, confidence cap, deterministic risk, offline fallback | ✅ |
 | 1.6 | `POST /api/diagnose-log` + dashboard Diagnose page | ✅ |
-| 1.7 | Add Alembic and replace `create_all` with migrations | ⬜ |
+| 1.7 | Add Alembic and replace `create_all` with migrations | ✅ (done in Phase 3; verified on an existing database) |
 | 1.8 | Extend analyzer: Java/Go manifests, lockfile detection, test-framework detection | ⬜ |
 
 ### Sprint 2 (Weeks 3–4): GitHub integration + review loop
@@ -79,16 +79,16 @@ on the public VM URL without manual action.
 | # | Task | Status |
 |---|---|---|
 | 3.1 | Kubernetes base manifests: probes, requests/limits, non-root, read-only FS | ✅ |
-| 3.2 | Convert to Helm chart with `values-dev.yaml` / `values-prod.yaml` | ⬜ |
-| 3.3 | Provision AKS **or** EKS + managed Postgres + managed Redis (Terraform preferred; portal/CLI acceptable with documented steps) | ⬜ |
-| 3.4 | Secrets via Azure Key Vault / AWS Secrets Manager CSI driver; remove plain K8s Secret | ⬜ |
-| 3.5 | Ingress + TLS (cert-manager); HPA on API | ⬜ |
-| 3.6 | Observability: `/metrics` (Prometheus), dashboards for diagnosis latency, token cost per day, failure categories, approval rate; ship JSON logs to Azure Monitor / CloudWatch | ⬜ |
-| 3.7 | AI reliability: per-repo daily token budget, circuit breaker on Claude errors, prompt caching for the system prompt, prompt version stored on each diagnosis | ⬜ |
-| 3.8 | Evals in CI: run harness against FakeClaude on every PR; nightly against real Claude with a cost cap | ⬜ |
-| 3.9 | Approved fix → open PR on new branch via GitHub App (`contents:write`, `pull_requests:write` only) | ⬜ |
-| 3.10 | Deployment assistant: generate Dockerfile / K8s manifest for a profiled repo; validate with hadolint + kubeconform before showing | ⬜ |
-| 3.11 | Documentation: SAFETY.md threat model (STRIDE), deployment procedure, ADRs, architecture diagrams, 3-minute demo video | ⬜ |
+| 3.2 | Convert to Helm chart with `values-dev.yaml` / `values-prod.yaml` | ✅ `infra/helm/devpilot`; lint + kubeconform clean, not yet installed on a cluster |
+| 3.3 | Provision AKS **or** EKS + managed Postgres + managed Redis (Terraform preferred; portal/CLI acceptable with documented steps) | ✅ `infra/terraform-eks` (validated, not applied) |
+| 3.4 | Secrets via Azure Key Vault / AWS Secrets Manager CSI driver; remove plain K8s Secret | ✅ CSI + IRSA; chart authors no Secret (driver syncs one at runtime) |
+| 3.5 | Ingress + TLS (cert-manager); HPA on API | ✅ ingress-nginx + cert-manager, HPA, PDB (not yet run on a cluster) |
+| 3.6 | Observability: `/metrics` (Prometheus), dashboards for diagnosis latency, token cost per day, failure categories, approval rate; ship JSON logs to Azure Monitor / CloudWatch | ✅ `/metrics` on api and worker, Grafana dashboard, alert rules, CloudWatch addon; live check of metrics endpoints done locally |
+| 3.7 | AI reliability: per-repo daily token budget, circuit breaker on Claude errors, prompt caching for the system prompt, prompt version stored on each diagnosis | ✅ tested; prompt caching only applies once the prompt exceeds the model minimum |
+| 3.8 | Evals in CI: run harness against FakeClaude on every PR; nightly against real Claude with a cost cap | ✅ PR gate (heuristic + fake) and nightly real run with cost cap; only 3 seed cases |
+| 3.9 | Approved fix → open PR on new branch via GitHub App (`contents:write`, `pull_requests:write` only) | ✅ API + worker, tested against a local git remote; no UI button, not tried on real GitHub |
+| 3.10 | Deployment assistant: generate Dockerfile / K8s manifest for a profiled repo; validate with hadolint + kubeconform before showing | ✅ API; validated with real hadolint + kubeconform; templates fallback when Claude is unavailable |
+| 3.11 | Documentation: SAFETY.md threat model (STRIDE), deployment procedure, ADRs, architecture diagrams, 3-minute demo video | ✅ docs done; the demo video is yours to record ([DEMO.md](DEMO.md)) |
 
 **Exit criteria / demo:** public HTTPS URL on Kubernetes; Grafana/Azure Monitor dashboard showing
 real metrics; one approved fix opened as a PR end-to-end.

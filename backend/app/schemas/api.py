@@ -41,6 +41,7 @@ class DiagnosisOut(BaseModel):
     patch: str = ""
     risk: RiskLevel
     model: str
+    prompt_version: str = ""
     warnings: list[str] = []
 
 
@@ -65,6 +66,7 @@ class FixOut(BaseModel):
     risk: RiskLevel
     status: ApprovalStatus
     decided_by: str | None = None
+    pr_url: str | None = None
     model_config = {"from_attributes": True}
 
 
@@ -78,5 +80,29 @@ class StoredDiagnosisOut(BaseModel):
     evidence: list[str]
     confidence: float
     model: str
+    prompt_version: str = ""
     created_at: datetime
     fix: FixOut | None = None
+
+
+class DeploymentAssistRequest(BaseModel):
+    kind: str = Field(default="both", pattern="^(dockerfile|kubernetes|both)$")
+
+
+class ValidationOut(BaseModel):
+    tool: str
+    passed: bool
+    issues: list[str]
+
+
+class ArtifactOut(BaseModel):
+    filename: str
+    kind: str
+    source: str  # claude | template | none
+    validation: ValidationOut
+    content: str | None = None  # withheld unless it passed validation
+
+
+class DeploymentAssistOut(BaseModel):
+    repository: str
+    artifacts: list[ArtifactOut]

@@ -18,3 +18,6 @@ crash.log
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Eval reports (uploaded as CI artifacts)
+evals/results/

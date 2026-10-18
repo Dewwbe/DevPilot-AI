@@ -1,0 +1,37 @@
+name: Nightly evals (real Claude)
+
+# Measures real model quality against evals/cases with a hard spend cap.
+# Requires the repo secret ANTHROPIC_API_KEY. Without it the job is skipped, not failed.
+on:
+  schedule: [{ cron: "17 2 * * *" }]
+  workflow_dispatch:
+    inputs:
+      max_cost_usd: { description: "Spend cap for this run (USD)", default: "0.50" }
+
+permissions:
+  contents: read
+
+jobs:
+  real-claude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEVPILOT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      MAX_COST_USD: ${{ inputs.max_cost_usd || '0.50' }}
+    steps:
+      - name: Skip when no API key is configured
+        if: env.DEVPILOT_ANTHROPIC_API_KEY == ''
+        run: echo "ANTHROPIC_API_KEY secret not set; skipping" && exit 0
+      - uses: actions/checkout@v4
+        if: env.DEVPILOT_ANTHROPIC_API_KEY != ''
+      - uses: actions/setup-python@v5
+        if: env.DEVPILOT_ANTHROPIC_API_KEY != ''
+        with: { python-version: "3.12", cache: pip }
+      - name: Run evals against real Claude
+        if: env.DEVPILOT_ANTHROPIC_API_KEY != ''
+        run: |
+          pip install -e "backend[dev]"
+          python evals/run_evals.py --mode real --max-cost-usd "$MAX_COST_USD"
+      - uses: actions/upload-artifact@v4
+        if: always() && env.DEVPILOT_ANTHROPIC_API_KEY != ''
+        with: { name: eval-report-real, path: evals/results/real.json }

@@ -163,7 +163,7 @@ resource "aws_ecs_task_definition" "app" {
       name        = "worker"
       image       = local.api_image
       essential   = true
-      command     = ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+      command     = ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "-P", "threads", "--concurrency=2"]
       environment = local.app_env
       dependsOn = [
         { containerName = "postgres", condition = "HEALTHY" },

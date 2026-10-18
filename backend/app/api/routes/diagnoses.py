@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core import metrics
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.models.entities import (
@@ -31,9 +32,11 @@ router = APIRouter(prefix="/api", tags=["diagnoses"])
 def diagnose_log(body: DiagnoseLogRequest):
     """Synchronous diagnosis of a pasted CI log (bounded input, demo-friendly)."""
     r = diagnose(body.log, body.repo_profile, max_chars=get_settings().max_log_chars)
+    metrics.record_diagnosis(r.category, r.model, r.input_tokens, r.output_tokens, r.latency_ms)
     return DiagnosisOut(category=r.category, root_cause=r.root_cause, evidence=r.evidence,
                         confidence=r.confidence, fix_summary=r.fix_summary, patch=r.patch,
-                        risk=r.risk, model=r.model, warnings=r.warnings)
+                        risk=r.risk, model=r.model, prompt_version=r.prompt_version,
+                        warnings=r.warnings)
 
 
 @router.post("/fixes/{fix_id}/decision")
@@ -53,7 +56,32 @@ def decide_fix(fix_id: str, body: DecisionIn, session: Session = Depends(get_ses
     audit.record(session, actor=body.reviewer, action=f"fix.{body.decision.value}",
                  target=fix_id, detail={"risk": fix.risk.value, "comment": body.comment})
     session.commit()
+    metrics.FIX_DECISIONS.labels(decision=body.decision.value).inc()
     return {"id": fix.id, "status": fix.status.value}
+
+
+@router.post("/fixes/{fix_id}/open-pr", status_code=202)
+def open_pr(fix_id: str, session: Session = Depends(get_session)):
+    """Open a pull request (new branch, never the default branch) for an approved fix."""
+    from app.services.github_app import app_configured
+    from app.workers.tasks import open_fix_pr_task
+
+    fix = session.get(ProposedFix, fix_id)
+    if not fix:
+        raise HTTPException(404, "Fix not found")
+    if fix.status != ApprovalStatus.approved:
+        raise HTTPException(409, "Only approved fixes can be opened as a pull request")
+    if not fix.patch.strip():
+        raise HTTPException(422, "This fix has no patch")
+    if fix.pr_url:
+        raise HTTPException(409, f"Pull request already opened: {fix.pr_url}")
+    if not app_configured():
+        raise HTTPException(503, "GitHub App is not configured (DEVPILOT_GITHUB_APP_*)")
+    audit.record(session, actor=fix.decided_by or "system", action="fix.pr_requested",
+                 target=fix.id)
+    session.commit()
+    open_fix_pr_task.delay(fix.id)
+    return {"id": fix.id, "status": "queued"}
 
 
 @router.get("/diagnoses", response_model=list[StoredDiagnosisOut])
@@ -69,7 +97,8 @@ def list_diagnoses(limit: int = 50, session: Session = Depends(get_session)):
         out.append(StoredDiagnosisOut(
             id=diag.id, repository=repo.full_name, provider_run_id=run.provider_run_id,
             category=diag.category, root_cause=diag.root_cause, evidence=diag.evidence,
-            confidence=diag.confidence, model=diag.model, created_at=diag.created_at,
+            confidence=diag.confidence, model=diag.model,
+            prompt_version=diag.prompt_version, created_at=diag.created_at,
             fix=FixOut.model_validate(fix) if fix else None))
     return out
 
