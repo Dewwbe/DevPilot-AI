@@ -1,0 +1,32 @@
+# Local development stack:  docker compose up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: devpilot, POSTGRES_PASSWORD: devpilot, POSTGRES_DB: devpilot }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U devpilot"], interval: 5s, retries: 10 }
+
+  redis:
+    image: redis:7-alpine
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+
+  api:
+    build: ./backend
+    env_file: .env
+    ports: ["8000:8000"]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy } }
+
+  worker:
+    build: ./backend
+    env_file: .env
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    depends_on: [api]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1g } } }
+
+  web:
+    build: ./frontend
+    ports: ["8080:8080"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
