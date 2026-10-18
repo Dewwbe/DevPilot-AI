@@ -1,0 +1,6 @@
+{
+  "name": "docker_copy_missing_file",
+  "log": "#8 [4/6] COPY requirements.txt .\nERROR: failed to solve: failed to compute cache key: \"/requirements.txt\": not found\nError: buildx failed with: ERROR: failed to solve",
+  "expected_category": "docker_build",
+  "must_mention": ["requirements.txt"]
+}

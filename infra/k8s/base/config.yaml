@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devpilot-config
+  namespace: devpilot
+data:
+  DEVPILOT_ENV: "k8s"
+  DEVPILOT_REDIS_URL: "redis://redis:6379/0"
+  DEVPILOT_CLAUDE_MODEL: "claude-sonnet-5-5"
+# Secrets (DEVPILOT_DATABASE_URL, DEVPILOT_ANTHROPIC_API_KEY, DEVPILOT_GITHUB_TOKEN)
+# are created out-of-band:  ./scripts/k8s-secrets.sh  - or via Azure Key Vault / AWS Secrets
+# Manager CSI driver in Phase 3. Never commit them.

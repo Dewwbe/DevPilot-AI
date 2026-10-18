@@ -1,0 +1,6 @@
+{
+  "name": "missing_python_dependency",
+  "log": "Run pytest\nImportError while importing test module '/app/tests/test_api.py'.\nE   ModuleNotFoundError: No module named 'requests'\nError: Process completed with exit code 1.",
+  "expected_category": "dependency",
+  "must_mention": ["requests"]
+}

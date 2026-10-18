@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devpilot-worker
+  namespace: devpilot
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: devpilot-worker } }
+  template:
+    metadata: { labels: { app: devpilot-worker } }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001 }
+      containers:
+        - name: worker
+          image: devpilot-api:latest
+          command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
+          envFrom:
+            - configMapRef: { name: devpilot-config }
+            - secretRef: { name: devpilot-secrets }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext: { allowPrivilegeEscalation: false }
+          volumeMounts: [{ name: workspaces, mountPath: /tmp/devpilot-workspaces }]
+      volumes:
+        - name: workspaces
+          emptyDir: { sizeLimit: 2Gi }

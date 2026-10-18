@@ -1,0 +1,6 @@
+{
+  "name": "failing_unit_test",
+  "log": "tests/test_pricing.py::test_discount FAILED\nE   AssertionError: assert 90 == 85\nFAILED tests/test_pricing.py::test_discount - AssertionError: assert 90 == 85\n1 failed, 24 passed in 2.1s",
+  "expected_category": "test_failure",
+  "must_mention": ["test_discount"]
+}

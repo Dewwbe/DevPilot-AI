@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devpilot-web
+  namespace: devpilot
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: devpilot-web } }
+  template:
+    metadata: { labels: { app: devpilot-web } }
+    spec:
+      containers:
+        - name: web
+          image: devpilot-web:latest
+          ports: [{ containerPort: 8080 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          readinessProbe: { httpGet: { path: /, port: 8080 } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: devpilot
+spec:
+  selector: { app: devpilot-web }
+  ports: [{ port: 80, targetPort: 8080 }]
